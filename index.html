@@ -1,0 +1,1231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pure planner</title>
+
+<!-- Three columns falling away to the right: a board, and a plan that thins
+     out the further ahead it looks. Inline, because a favicon fetched from
+     anywhere else would be the one external request this file does not make.
+     Drawn to survive 16 px -- five wide, two apart, no detail below a pixel. -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232f6feb'/><rect x='6' y='8' width='5' height='16' rx='2' fill='%23fff'/><rect x='13.5' y='8' width='5' height='11' rx='2' fill='%23fff' opacity='.72'/><rect x='21' y='8' width='5' height='6' rx='2' fill='%23fff' opacity='.45'/></svg>">
+
+<!--
+  A roadmap board in one file. See README.md beside this for how to plug a
+  project in.
+
+  Releases are columns carrying their question, the argument for them and their
+  gate; the work in a release is cards you drag between them. It reads and
+  writes one JSON file in a GitHub repository, so a person and an assistant can
+  both edit the same plan and see each other's changes.
+
+  **Nothing about any one project is compiled in.** The repo, branch, path,
+  commit message and token live in this browser; the title, the releases and
+  the numbering come from the data. Point it somewhere else and it manages that
+  project instead, with nothing edited.
+
+  **The token is a per-device paste and is never written into the file.**
+  Somebody else opening this page finds empty fields -- the same answer the
+  Android app's `GateToken` gives to the same question.
+
+  No build step, no dependencies, no CDN, no framework. It talks to
+  `api.github.com` and nothing else.
+-->
+
+<style>
+:root {
+  --bg: #ffffff;
+  --column: #f5f6f7;
+  --card: #ffffff;
+  --ink: #16181c;
+  --ink2: #5c6470;
+  --ink3: #8b929c;
+  --line: #dfe2e6;
+  --line2: #c8cdd4;
+  --accent: #2f6feb;
+  --cut: #b0560c;
+  --cut-bg: #fdf3e7;
+  --done: #1a7f4b;
+  --danger: #c0392b;
+  --drop: #e8f0fe;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --column: #1b1e23; --card: #23262c;
+    --ink: #e7e9ec; --ink2: #9aa2ad; --ink3: #6f7883;
+    --line: #2d3138; --line2: #3b4048;
+    --accent: #5b8def; --cut: #e0a267; --cut-bg: #2c2317;
+    --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161a; --column: #1b1e23; --card: #23262c;
+  --ink: #e7e9ec; --ink2: #9aa2ad; --ink3: #6f7883;
+  --line: #2d3138; --line2: #3b4048;
+  --accent: #5b8def; --cut: #e0a267; --cut-bg: #2c2317;
+  --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+header {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--bg);
+}
+h1 { font-size: 15px; font-weight: 600; margin: 0; }
+
+/* The same mark as the favicon, drawn again rather than pointed at: the icon
+   is a data URI in a `link`, and an `img` aimed at it would be a second copy
+   of the same string. Inline it takes `var(--accent)`, so it moves with the
+   theme -- which a favicon cannot do. */
+.mark { flex: 0 0 auto; width: 18px; height: 18px; margin-right: -3px; }
+
+/* The app is named once and the project is named beside it, quieter, because
+   the tool is the constant and the project is what it is pointed at today.
+   It carries no data until one is loaded -- an empty header beats a header
+   naming a project that is not open. */
+.project {
+  font-size: 12px; color: var(--ink2); padding-left: 9px;
+  border-left: 1px solid var(--line2); margin-left: 2px;
+}
+.project:empty { display: none; }
+.status { color: var(--ink3); font-size: 12px; }
+.spacer { flex: 1; }
+button {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--card);
+  border: 1px solid var(--line2); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+button:hover { border-color: var(--ink3); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+
+/* ── the two sheets ───────────────────────────────────────────────────── */
+
+.sheet {
+  position: fixed; inset: 0; z-index: 60; padding: 20px;
+  background: rgba(10, 12, 16, .45);
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow-y: auto;
+}
+.sheet[hidden] { display: none; }
+.sheetbox {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px 20px 16px; width: min(460px, 100%); margin-top: 6vh;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.sheetbox h2 { font-size: 15px; margin: 0; }
+.sheetbox p, .sheetbox ol { margin: 0; font-size: 13px; color: var(--ink2); }
+.sheetbox ol { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.sheetbox label {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink3);
+}
+.sheetbox input {
+  font: inherit; font-size: 13px; letter-spacing: normal; text-transform: none;
+  color: var(--ink); background: var(--column);
+  border: 1px solid var(--line2); border-radius: 6px; padding: 7px 8px;
+}
+.sheetbox input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fine {
+  font-size: 11.5px; font-weight: 400; letter-spacing: normal;
+  text-transform: none; color: var(--ink3);
+}
+.sheetbox code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+}
+.sheetrow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+button.quiet { border-color: transparent; color: var(--ink3); }
+button.quiet:hover { color: var(--danger); border-color: var(--line2); }
+
+/* ── board ────────────────────────────────────────────────────────────── */
+
+#board {
+  flex: 1; display: flex; align-items: flex-start;
+  overflow-x: auto; overflow-y: hidden;
+  padding: 14px 6px 20px; scrollbar-width: thin;
+  cursor: grab;
+}
+#board.panning { cursor: grabbing; scroll-behavior: auto; }
+
+.column {
+  flex: 0 0 292px; max-height: 100%; display: flex; flex-direction: column;
+  background: var(--column); border: 1px solid var(--line);
+  border-radius: 8px; margin: 0 2px;
+}
+.column.dragging { opacity: .4; }
+
+/* ── the shipped rail ─────────────────────────────────────────────────── */
+
+/* Finished releases are a list beside the board, not columns in it. **A plan
+   is about what is next**, and a history that grows for ever should not push
+   what is next off the right-hand edge -- so it stacks downward, scrolls on
+   its own, and can be shut away entirely. */
+#main { flex: 1; display: flex; min-height: 0; }
+
+#shipped {
+  flex: 0 0 236px; display: flex; flex-direction: column;
+  border-right: 1px solid var(--line); background: var(--column); min-height: 0;
+}
+#shipped[hidden] { display: none; }
+
+/* The control sits on the drawer rather than across the room in the app bar.
+   Its own head closes it, and a slim tab is left behind to open it again --
+   so the thing you press is always beside the thing it moves. */
+.railhead {
+  flex: 0 0 auto; padding: 9px 10px 9px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink3);
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  user-select: none; background: none; border-left: 0; border-right: 0;
+  border-top: 0; width: 100%; text-align: left;
+}
+.railhead:hover { color: var(--ink2); }
+.railhead .count { margin-left: auto; font-variant-numeric: tabular-nums; }
+.railhead .chev { font-size: 13px; letter-spacing: 0; }
+
+#shippedTab {
+  flex: 0 0 26px; display: none; cursor: pointer; padding: 10px 0;
+  border-right: 1px solid var(--line); background: var(--column);
+  flex-direction: column; align-items: center; gap: 9px;
+  border-top: 0; border-bottom: 0; border-left: 0; border-radius: 0;
+}
+#shippedTab:hover { background: var(--spine, var(--column)); }
+#shippedTab[data-on] { display: flex; }
+#shippedTab .chev { font-size: 13px; color: var(--ink3); }
+#shippedTab .vlabel {
+  writing-mode: vertical-rl; font-size: 10px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink3);
+}
+#shippedTab .count { font-size: 10px; color: var(--ink3); }
+.raillist { flex: 1; overflow-y: auto; padding: 6px; scrollbar-width: thin; }
+
+.railrow {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 7px 8px; border-radius: 6px; font-size: 12.5px;
+}
+.railrow + .railrow { border-top: 1px solid var(--line); border-radius: 0; }
+.railtick { color: var(--done); font-size: 11px; line-height: 1.5; }
+.railid {
+  flex: 0 0 42px; font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  color: var(--ink2); line-height: 1.5; font-variant-numeric: tabular-nums;
+}
+.railq { flex: 1; color: var(--ink3); }
+
+@media (max-width: 700px) { #shipped { flex-basis: 190px; } }
+
+.chead { padding: 10px 12px 9px; border-bottom: 1px solid var(--line); cursor: grab; }
+.chead:active { cursor: grabbing; }
+.crow { display: flex; align-items: baseline; gap: 8px; }
+.cid {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  color: var(--ink3); text-transform: uppercase; flex: 1;
+}
+.kill {
+  border: none; background: none; color: var(--ink3); padding: 0 3px;
+  font-size: 14px; line-height: 1; cursor: pointer;
+}
+.kill:hover { color: var(--danger); }
+.cq { font-size: 14px; font-weight: 600; margin: 3px 0 0; }
+
+.eyebrow {
+  font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink3); margin: 9px 0 2px;
+}
+.prose, .gate {
+  font-size: 12.5px; color: var(--ink2); white-space: pre-wrap;
+  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical;
+}
+.prose { margin-top: 8px; -webkit-line-clamp: 4; }
+.gate { -webkit-line-clamp: 2; }
+.open .prose, .open .gate { -webkit-line-clamp: unset; display: block; }
+
+/* **The clamp must lift while a field is open**, or the textarea it opens
+   inside is clipped by its own container -- and editing looks broken at
+   exactly the moment somebody writes a long paragraph. */
+.prose.editing, .gate.editing { -webkit-line-clamp: unset; display: block; }
+
+.more {
+  font-size: 11.5px; color: var(--accent); cursor: pointer;
+  margin-top: 4px; display: inline-block; user-select: none;
+}
+.cmeta { margin-top: 9px; font-size: 11.5px; color: var(--ink3); }
+.cmeta .prog { color: var(--done); }
+
+.cards { overflow-y: auto; padding: 6px; flex: 1; min-height: 30px; }
+
+.card {
+  display: flex; gap: 6px; align-items: flex-start;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px 8px 8px 6px; margin-bottom: 6px; font-size: 13px;
+}
+.card.dragging { opacity: .35; }
+.card.cut { border-left: 3px solid var(--cut); }
+.card.done .ctitle { color: var(--ink3); text-decoration: line-through; }
+.grip {
+  flex: 0 0 auto; width: 12px; color: var(--ink3); cursor: grab;
+  user-select: none; touch-action: none; line-height: 1.3;
+}
+.grip:active { cursor: grabbing; }
+.tick {
+  flex: 0 0 auto; width: 14px; height: 14px; margin-top: 2px; accent-color: var(--done);
+}
+.cardbody { flex: 1; min-width: 0; }
+.ctitle { cursor: text; }
+.cflags { margin-top: 5px; font-size: 11px; color: var(--cut); }
+.cbody {
+  margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line);
+  font-size: 12.5px; color: var(--ink2); white-space: pre-wrap;
+}
+
+.add {
+  width: 100%; text-align: left; color: var(--ink3);
+  background: none; border: 1px dashed var(--line2);
+}
+
+/* Faintly visible rather than hover-only. **There is no hover on a phone**,
+   and an affordance that only exists under a mouse does not exist on the
+   device this is most used from. */
+.gap {
+  flex: 0 0 20px; align-self: stretch; display: flex;
+  align-items: flex-start; justify-content: center; padding-top: 14px;
+  color: var(--line2); cursor: pointer; user-select: none;
+  font-size: 17px; line-height: 1;
+}
+.gap:hover { color: var(--accent); }
+
+.dropline { background: var(--drop); border-radius: 3px; }
+
+#ghost {
+  position: fixed; pointer-events: none; z-index: 50; opacity: .95;
+  box-shadow: 0 6px 18px rgba(0,0,0,.25); border-radius: 6px; display: none;
+}
+
+textarea, input.edit {
+  font: inherit; width: 100%; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--accent); border-radius: 5px; padding: 5px 6px; resize: vertical;
+}
+textarea { font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+    <rect width="32" height="32" rx="7" fill="var(--accent)"/>
+    <rect x="6" y="8" width="5" height="16" rx="2" fill="#fff"/>
+    <rect x="13.5" y="8" width="5" height="11" rx="2" fill="#fff" opacity=".72"/>
+    <rect x="21" y="8" width="5" height="6" rx="2" fill="#fff" opacity=".45"/>
+  </svg>
+  <h1>Pure planner</h1>
+  <span class="project" id="title"></span>
+  <span class="status" id="status"></span>
+  <span class="spacer"></span>
+  <button id="refresh" title="Check the repository now">&#8635;</button>
+  <button id="gear" title="Project and token">&#9881;</button>
+  <button id="theme">Theme</button>
+  <button class="primary" id="save" title="Save now, without waiting">Save</button>
+</header>
+
+<div id="firstrun" class="sheet" hidden>
+  <div class="sheetbox">
+    <h2>Connect a project</h2>
+    <p>This board keeps a plan in one JSON file in a GitHub repository, and edits it
+      in place. Nothing about any project is built in &mdash; point it at yours.</p>
+    <ol>
+      <li><strong>Mint a fine-grained token</strong> for that repository only, with
+        <strong>Contents: read and write</strong>. Nothing else.</li>
+      <li><strong>Name the repository</strong>, the branch, and the path you want the
+        file kept at.</li>
+      <li>If the file is not there, it offers to create it.</li>
+    </ol>
+    <p class="fine">The token stays in this browser and is never written into the file.
+      Somebody else opening this page finds empty fields.</p>
+    <div class="sheetrow"><button class="primary" id="startSetup">Set it up</button></div>
+  </div>
+</div>
+
+<div id="ask" class="sheet" hidden><div class="sheetbox" id="askbox"></div></div>
+
+<div id="settings" class="sheet" hidden>
+  <div class="sheetbox">
+    <h2>Project</h2>
+    <label>Owner<input id="f_owner" autocomplete="off" spellcheck="false" placeholder="octocat"></label>
+    <label>Repository<input id="f_repo" autocomplete="off" spellcheck="false" placeholder="my-project"></label>
+    <label>Branch<input id="f_branch" autocomplete="off" spellcheck="false" placeholder="main"></label>
+    <label>File<input id="f_path" autocomplete="off" spellcheck="false" placeholder="docs/roadmap.json"></label>
+    <label>Commit message
+      <input id="f_message" autocomplete="off" spellcheck="false">
+      <span class="fine">Ending it <code>[skip ci]</code> stops every save starting a
+        build. Drop that if your project wants saves to trigger something.</span>
+    </label>
+    <label>Token
+      <input id="f_token" type="password" autocomplete="off" spellcheck="false"
+        placeholder="github_pat_…">
+      <span class="fine">Fine-grained, this repository only, Contents: read and write.
+        Kept in this browser.</span>
+    </label>
+    <div class="sheetrow">
+      <button id="forget" class="quiet">Forget this device</button>
+      <span class="spacer"></span>
+      <button id="cancelSettings">Cancel</button>
+      <button class="primary" id="saveSettings">Connect</button>
+    </div>
+  </div>
+</div>
+
+<div id="main">
+  <button id="shippedTab" title="Show shipped releases">
+    <span class="chev">›</span>
+    <span class="vlabel">Shipped</span>
+    <span class="count" id="tabCount"></span>
+  </button>
+  <aside id="shipped">
+    <button class="railhead" id="railhead" aria-expanded="true" aria-controls="raillist">
+      <span class="chev">‹</span>
+      <span>Shipped</span>
+      <span class="count" id="shippedCount"></span>
+    </button>
+    <div class="raillist" id="raillist"></div>
+  </aside>
+  <div id="board"></div>
+</div>
+<div id="ghost"></div>
+
+<script>
+"use strict";
+
+/* Stage 2 replaces this with a fetch of the project's roadmap.json. The shape
+   is the shape: array order is the order, so there are no order fields, no
+   item ids and no foreign keys that can fall out of step. */
+let DATA = { title: "", releases: [] };
+
+/* ── the project it is connected to ────────────────────────────────────── */
+
+/* Everything about *which* project lives here, in the browser, never in the
+   file. That is the whole reuse story: point it somewhere else and it manages
+   that project instead, with nothing edited.
+
+   The token is a per-device paste, exactly as `GateToken` is in the Android
+   app, and the test both answer is the same one -- **could a stranger holding
+   this file act as me?** They find empty fields. Nothing is baked in. */
+/* Declared before `cfg`, not beside `load()` where it reads better. `let cfg =
+   load()` runs at its own line, and `load()` assigns this on the failure path
+   -- so declaring it lower put it in the temporal dead zone and threw, but
+   only in the one environment where that path is taken. */
+let remembers = true;
+
+const CONFIG_KEY = "roadmap.config.v1";
+const DEFAULTS = {
+  owner: "", repo: "", branch: "", path: "docs/roadmap.json",
+  // `[skip ci]` is a GitHub Actions idiom, and it is a *setting* rather than a
+  // constant because it is this project's need rather than the tool's: with
+  // `on: push: branches: ["**"]`, every drag of a card would start a build.
+  message: "Roadmap: update from the board [skip ci]",
+  token: "",
+};
+let cfg = load();
+let sha = null;          // the blob this board was built from
+let saveTimer = null;
+let saving = false;
+
+/* **Both guarded, and the write is the one that bites.** `localStorage` is not
+   merely empty in an opaque-origin context -- a sandboxed iframe, a browser
+   with storage switched off -- it *throws* on access. Guarding only the read
+   meant connecting a project threw halfway through and the board silently
+   never loaded, which is how this was found. The tool still works for the
+   session; it just cannot remember. */
+function load() {
+  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}") }; }
+  catch { remembers = false; return { ...DEFAULTS }; }
+}
+function store() {
+  try { localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg)); }
+  catch { remembers = false; }
+}
+function forgetStored() {
+  try { localStorage.removeItem(CONFIG_KEY); } catch { /* nothing to forget */ }
+}
+function connected() { return cfg.owner && cfg.repo && cfg.branch && cfg.token; }
+
+/* ── GitHub ────────────────────────────────────────────────────────────── */
+
+/* Chunked rather than spread. `String.fromCharCode(...bytes)` on a 20 KB file
+   is 20,000 arguments in one call, which is a stack overflow on some engines
+   and a silent success on others -- the worst kind of bug to ship. */
+function toBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    out += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(out);
+}
+function fromBase64(b64) {
+  const clean = b64.replace(/\s/g, "");
+  return new TextDecoder().decode(
+    Uint8Array.from(atob(clean), c => c.charCodeAt(0)));
+}
+
+async function api(path, init = {}) {
+  const res = await fetch(`https://api.github.com${path}`, {
+    ...init,
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${cfg.token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...init.headers,
+    },
+  });
+  return res;
+}
+
+function contentsPath() {
+  return `/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`
+    + `?ref=${encodeURIComponent(cfg.branch)}`;
+}
+
+/* **A `fetch` that throws never reached the network at all**, so "cannot reach
+   GitHub" blames the one part that is probably fine. There is no status to
+   read because there was no request.
+
+   The cause that actually happens is the page's own host. A published Claude
+   artifact -- and any frame carrying a content policy -- blocks every request
+   to an external origin before it leaves, which is a `TypeError` and nothing
+   more. Being offline throws the same way, so both are named and the one that
+   can be tested is tested: `onLine === false` is trustworthy, `true` only
+   means an interface is up. */
+function whyBlocked(e) {
+  if (navigator.onLine === false) return "this device is offline";
+  return "this page is not allowed to call api.github.com. A preview frame or "
+    + "a content policy is stopping the request before it leaves — open the "
+    + "board from GitHub Pages, a local file, or a static server instead. ("
+    + e.message + ")";
+}
+
+/* **GitHub says which of them it is, and this used to throw that away.** Its
+   error body carries a `message`, and for the two failures that look identical
+   from outside they are not remotely alike: a token that may not write says
+   "Resource not accessible by personal access token", a branch that is not
+   there says "Branch <name> not found". Both arrive as 404 -- 403 is withheld
+   on purpose, so that a private repository cannot be probed by watching which
+   error comes back -- so the status alone cannot tell them apart and any
+   advice written from it is a guess.
+
+   One read of the body, and the guessing stops. */
+async function detail(res) {
+  try {
+    const j = await res.clone().json();
+    return j.message ? ` GitHub: “${j.message}”` : "";
+  } catch { return ""; }
+}
+
+async function pull({ quiet = false } = {}) {
+  if (!connected()) { firstRun(); return; }
+  if (!quiet) say("loading…");
+  let res;
+  try {
+    res = await api(contentsPath());
+  } catch (e) {
+    say("cannot load — " + whyBlocked(e), true); return;
+  }
+  if (res.status === 404) { return explain404(); }
+  if (res.status === 401 || res.status === 403) {
+    say("the token was refused — check it has Contents access to this repo."
+      + await detail(res), true);
+    return;
+  }
+  if (!res.ok) {
+    say(`could not load — GitHub said ${res.status}.` + await detail(res), true); return;
+  }
+
+  const meta = await res.json();
+  try {
+    DATA = JSON.parse(fromBase64(meta.content));
+  } catch (e) {
+    say("the file is not valid JSON — " + e.message, true); return;
+  }
+  sha = meta.sha;
+  document.getElementById("title").textContent = DATA.title || cfg.repo;
+  render();
+  say("loaded");
+}
+
+/* Debounced, so the window in which two people can clash is the seconds since
+   the last keystroke rather than however long a tab was open. */
+function touched() {
+  say("unsaved…");
+  if (!connected()) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(push, 3500);
+}
+
+async function push() {
+  if (!connected() || saving) return;
+  saving = true;
+  say("saving…");
+  const body = JSON.stringify({
+    message: cfg.message,
+    content: toBase64(JSON.stringify(DATA, null, 2) + "\n"),
+    branch: cfg.branch,
+    ...(sha ? { sha } : {}),
+  });
+  let res;
+  try {
+    res = await api(`/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`,
+      { method: "PUT", body });
+  } catch (e) {
+    saving = false; say("cannot save — " + whyBlocked(e), true); return;
+  }
+  saving = false;
+
+  /* **A clash never picks a winner silently.** The write carries the blob it
+     was based on, so a stale one is refused rather than allowed to clobber --
+     and then the choice is a person's, because catching a conflict and
+     resolving one are different problems and only the first has one answer. */
+  if (res.status === 409 || res.status === 422) {
+    const keepMine = await ask({
+      title: "It changed underneath you",
+      message: "The file was updated in the repository while you were editing."
+        + " Nothing has been overwritten.",
+      buttons: [
+        { label: "Load theirs", value: false },
+        { label: "Keep mine", value: true, primary: true },
+      ],
+    });
+    if (keepMine === null) { say("not saved — the file has moved on", true); return; }
+    if (keepMine) {
+      const head = await api(contentsPath());
+      if (head.ok) { sha = (await head.json()).sha; return push(); }
+      say("could not read the newer version", true);
+    } else {
+      sha = null; pull();
+    }
+    return;
+  }
+  /* **A 404 on a write is a permission, not a missing file** -- a PUT creates
+     what is not there, so absence cannot be the answer. GitHub returns 404
+     rather than 403 for a write the token may not make, deliberately, so that
+     a private repository cannot be probed for existence. The cost is that the
+     one error somebody actually hits reads as "wrong path" when it means
+     "read-only token", and they check the path. Reading works with Contents:
+     Read, so this arrives only at the first save, long after setting up. */
+  if (res.status === 404) {
+    say("not saved — a 404 on a write is a permission or a missing branch, "
+      + "never a missing file." + await detail(res), true);
+    return;
+  }
+  if (res.status === 401 || res.status === 403) {
+    say("not saved — the token was refused." + await detail(res), true); return;
+  }
+  if (!res.ok) {
+    say(`not saved — GitHub said ${res.status}.` + await detail(res), true); return;
+  }
+  sha = (await res.json()).content.sha;
+  say("saved " + clock());
+}
+
+function clock() {
+  return new Date().toTimeString().slice(0, 5);
+}
+
+/* No polling. A phone should not wake every thirty seconds to ask a question
+   whose answer is almost always no -- but coming back to the tab is exactly
+   the moment the answer might have changed. */
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || !connected() || saveTimer) return;
+  const res = await api(contentsPath()).catch(() => null);
+  if (!res?.ok) return;
+  const meta = await res.json();
+  if (meta.sha !== sha) pull({ quiet: true });
+});
+
+function say(text, bad) {
+  const s = document.getElementById("status");
+  s.textContent = text;
+  s.style.color = bad ? "var(--danger)" : "";
+}
+
+/* ── asking, without `prompt` or `confirm` ─────────────────────────────── */
+
+/* **A sandboxed iframe refuses the browser's own dialogs**, and the refusal
+   measured here was `confirm()` **throwing `SecurityError`** -- not the quiet
+   `false` the specification describes, which is what this comment claimed
+   before somebody looked. It matters which: a returned `false` makes a delete
+   do nothing, a throw takes the rest of the click handler with it.
+
+   Either way this page is meant to be openable from anywhere, including places
+   that sandbox it, so it cannot depend on them.
+
+   Resolves to a button's value, or null on Escape or a click outside. */
+function ask({ title, message, value, buttons }) {
+  return new Promise(resolve => {
+    const sheet = document.getElementById("ask");
+    const box = document.getElementById("askbox");
+    box.textContent = "";
+    box.appendChild(el("h2", null, title));
+    if (message) box.appendChild(el("p", null, message));
+
+    let input = null;
+    if (value !== undefined) {
+      input = document.createElement("input");
+      input.value = value;
+      input.spellcheck = false;
+      input.autocomplete = "off";
+      box.appendChild(input);
+    }
+
+    const row = el("div", "sheetrow");
+    row.appendChild(el("span", "spacer"));
+    buttons.forEach(b => {
+      const btn = el("button", b.primary ? "primary" : b.quiet ? "quiet" : "", b.label);
+      btn.onclick = () => done(b.value === "@input" ? input.value.trim() : b.value);
+      row.appendChild(btn);
+    });
+    box.appendChild(row);
+
+    sheet.hidden = false;
+    (input || row.lastElementChild).focus();
+    if (input) input.select();
+
+    function done(v) {
+      sheet.hidden = true;
+      document.removeEventListener("keydown", key, true);
+      sheet.onclick = null;
+      resolve(v);
+    }
+    function key(e) {
+      if (e.key === "Escape") { e.preventDefault(); done(null); }
+      if (e.key === "Enter" && input) { e.preventDefault(); done(input.value.trim()); }
+    }
+    document.addEventListener("keydown", key, true);
+    sheet.onclick = e => { if (e.target === sheet) done(null); };
+  });
+}
+
+const YES_NO = (yes, danger) => [
+  { label: "Cancel", value: null },
+  { label: yes, value: true, primary: !danger, quiet: danger },
+];
+
+/* ── settings, and the first run ───────────────────────────────────────── */
+
+function firstRun() {
+  document.getElementById("firstrun").hidden = false;
+  say("not connected");
+}
+
+/* **A 404 on the read was being taken as proof the file is missing**, and it is
+   nothing of the sort. The same status comes back for a repository the token
+   cannot see, and a fine-grained token's *Repository access* is a separate
+   control from its permission list -- it defaults to "Public repositories",
+   which against a private repo 404s everything while the permissions below it
+   still read exactly right.
+
+   So the board offered to create a file in a repository it could not see, the
+   offer was accepted, and the first symptom was a failed *save* minutes later
+   pointing at the write. Three rounds of diagnosis went into the write path
+   because the read had already failed and said something reassuring.
+
+   Two more requests, only ever on the failure path, and each of the three
+   causes gets named where it happens. */
+async function explain404() {
+  const repo = await api(`/repos/${cfg.owner}/${cfg.repo}`);
+  if (repo.status === 404) {
+    say(`cannot see ${cfg.owner}/${cfg.repo}. Either the token's Repository `
+      + `access does not include it — a fine-grained token defaults to `
+      + `"Public repositories", and a private repo needs it named — or the `
+      + `owner or repository is misspelt.`, true);
+    return;
+  }
+  if (!repo.ok) {
+    say(`could not check the repository — GitHub said ${repo.status}.`
+      + await detail(repo), true);
+    return;
+  }
+  const branch = await api(
+    `/repos/${cfg.owner}/${cfg.repo}/branches/${encodeURIComponent(cfg.branch)}`);
+  if (branch.status === 404) {
+    say(`there is no branch “${cfg.branch}” in ${cfg.owner}/${cfg.repo}.`, true);
+    return;
+  }
+  offerToCreate();
+}
+
+async function offerToCreate() {
+  const make = await ask({
+    title: "Nothing there yet",
+    message: `${cfg.path} is not in ${cfg.owner}/${cfg.repo} on ${cfg.branch}.`
+      + " Create it, with one empty release to start from?",
+    buttons: YES_NO("Create it"),
+  });
+  if (!make) { say("no file at that path", true); return; }
+  DATA = { title: cfg.repo, releases: [
+    { id: "R1", question: "A question this release answers",
+      size: "?", prose: "", gate: "", items: [] }] };
+  sha = null;
+  render();
+  push();
+}
+
+const panel = document.getElementById("settings");
+const fields = ["owner", "repo", "branch", "path", "message", "token"];
+
+function openSettings() {
+  fields.forEach(f => { document.getElementById("f_" + f).value = cfg[f] || ""; });
+  panel.hidden = false;
+  document.getElementById("firstrun").hidden = true;
+  document.getElementById("f_owner").focus();
+}
+document.getElementById("gear").onclick = openSettings;
+document.getElementById("startSetup").onclick = openSettings;
+document.getElementById("cancelSettings").onclick = () => { panel.hidden = true; };
+/* **These fields are filled by pasting, so they are cleaned like paste.** Not
+   defensiveness for its own sake -- each of these is something that actually
+   arrives. A field's own label comes along with the value ("Repository
+   Plain_tracker"), because a table of settings is copied a row at a time. The
+   whole URL gets pasted, because that is what the address bar holds. And
+   `owner/repo` lands in the repository box, because that is the only form
+   GitHub ever shows a repository in.
+
+   All three then fail as *cannot see that repository*, which is true and
+   useless: the eye slides over an extra word in a field it just filled in. */
+function unlabel(s) {
+  return s.replace(/^(owner|repository|repo|branch|file|path|token)\b[:\s]+/i, "").trim();
+}
+
+/* A repository is only ever written `owner/name`, and its page is only ever
+   reached by a URL, so both turn up in the one box that wants half of each. */
+function splitRepo(owner, repo) {
+  const url = repo.match(/github\.com\/([^/\s]+)\/([^/\s?#]+)/i);
+  if (url) return [url[1], url[2].replace(/\.git$/i, "")];
+  const pair = repo.match(/^([^/\s]+)\/([^/\s]+)$/);
+  return pair ? [pair[1], pair[2]] : [owner, repo];
+}
+
+document.getElementById("saveSettings").onclick = () => {
+  fields.forEach(f => {
+    cfg[f] = unlabel(document.getElementById("f_" + f).value.trim());
+  });
+  [cfg.owner, cfg.repo] = splitRepo(cfg.owner, cfg.repo);
+  fields.forEach(f => { document.getElementById("f_" + f).value = cfg[f]; });
+  if (!cfg.branch) cfg.branch = "main";
+  if (!cfg.path) cfg.path = DEFAULTS.path;
+  if (!cfg.message) cfg.message = DEFAULTS.message;
+  store();
+  panel.hidden = true;
+  sha = null;
+  pull();
+  if (!remembers) {
+    say("connected — but this browser will not remember it past this tab");
+  }
+};
+document.getElementById("forget").onclick = async () => {
+  if (!await ask({ title: "Forget this project and its token on this device?",
+                   buttons: YES_NO("Forget", true) })) return;
+  forgetStored();
+  cfg = load(); sha = null;
+  DATA = { title: "", releases: [] };
+  render(); panel.hidden = true; firstRun();
+};
+
+document.getElementById("refresh").onclick = () => pull();
+document.getElementById("save").onclick = () => { clearTimeout(saveTimer); push(); };
+
+const board = document.getElementById("board");
+const ghost = document.getElementById("ghost");
+const open = new Set();      // releases with prose + gate expanded
+const openCards = new Set(); // cards showing their body
+
+document.getElementById("title").textContent = DATA.title;
+
+/* The rail starts shut on a narrow screen. 236px of history on a 412px phone
+   is most of the screen spent on what is already finished. */
+const rail = document.getElementById("shipped");
+const railTab = document.getElementById("shippedTab");
+function showRail(on) {
+  rail.hidden = !on;
+  if (on) railTab.removeAttribute("data-on"); else railTab.setAttribute("data-on", "");
+  document.getElementById("railhead").setAttribute("aria-expanded", String(on));
+}
+showRail(innerWidth >= 700);
+document.getElementById("railhead").onclick = () => showRail(false);
+railTab.onclick = () => showRail(true);
+document.getElementById("theme").onclick = () => {
+  const now = document.documentElement.getAttribute("data-theme");
+  const dark = now ? now === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+};
+
+/* ── rendering ─────────────────────────────────────────────────────────── */
+
+function render() {
+  board.textContent = "";
+  // Only what is ahead is a column. Shipped releases are the rail, which is
+  // why no inserter appears among them -- a release cannot go into the past.
+  DATA.releases.forEach((rel, ri) => {
+    if (rel.shipped) return;
+    board.appendChild(gap(ri));
+    board.appendChild(column(rel, ri));
+  });
+  board.appendChild(gap(DATA.releases.length));
+  renderShipped();
+}
+
+function renderShipped() {
+  const list = document.getElementById("raillist");
+  const done = DATA.releases.filter(r => r.shipped);
+  document.getElementById("shippedCount").textContent = done.length;
+  document.getElementById("tabCount").textContent = done.length;
+  list.textContent = "";
+  if (!done.length) {
+    list.appendChild(el("div", "railq", "Nothing shipped yet."));
+    return;
+  }
+  done.forEach(rel => {
+    const row = el("div", "railrow");
+    row.appendChild(el("span", "railtick", "✓"));
+    row.appendChild(el("span", "railid", rel.id));
+    row.appendChild(el("span", "railq", rel.question || ""));
+    list.appendChild(row);
+  });
+}
+
+/* The index rides on the element. It used to be derived by counting gaps,
+   which was correct only while there was one gap per release -- and stopped
+   being true the moment gaps between shipped releases were suppressed. */
+function gap(index) {
+  const g = el("div", "gap", "+");
+  g.dataset.at = index;
+  g.title = "Insert a release here";
+  g.onclick = () => insertRelease(index);
+  return g;
+}
+
+function column(rel, ri) {
+  const c = el("div", "column");
+  c.dataset.release = ri;
+  if (open.has(rel.id)) c.classList.add("open");
+
+  const head = el("div", "chead");
+
+  const row = el("div", "crow");
+  row.appendChild(editable(el("div", "cid", rel.id), v => { rel.id = v; }, "input"));
+  const kill = el("button", "kill", "×");
+  kill.title = "Delete this release";
+  kill.onclick = e => { e.stopPropagation(); deleteRelease(ri); };
+  row.appendChild(kill);
+  head.appendChild(row);
+
+  head.appendChild(editable(el("div", "cq", rel.question), v => { rel.question = v; }));
+  head.appendChild(editable(el("div", "prose", rel.prose || ""), v => { rel.prose = v; }));
+  head.appendChild(el("div", "eyebrow", "Gate"));
+  head.appendChild(editable(
+    el("div", "gate", rel.gate || "— not written yet —"),
+    v => { rel.gate = v; }));
+
+  const long = (rel.prose || "").length > 150 || (rel.gate || "").length > 90;
+  if (long) {
+    const more = el("span", "more", open.has(rel.id) ? "less ▴" : "more ▾");
+    more.onclick = e => {
+      e.stopPropagation();
+      open.has(rel.id) ? open.delete(rel.id) : open.add(rel.id);
+      render();
+    };
+    head.appendChild(more);
+  }
+
+  const n = rel.items.length;
+  const done = rel.items.filter(i => i.done).length;
+  const meta = el("div", "cmeta");
+  meta.append(`${rel.size || "?"} · `);
+  if (done > 0) {
+    meta.appendChild(el("span", "prog", `${done} of ${n} done`));
+  } else {
+    meta.append(`${n} item${n === 1 ? "" : "s"}`);
+  }
+  head.appendChild(meta);
+
+  head.addEventListener("pointerdown", e => startDrag(e, c, "column", { ri }));
+  c.appendChild(head);
+
+  const cards = el("div", "cards");
+  rel.items.forEach((item, ii) => cards.appendChild(card(rel, item, ri, ii)));
+  const add = el("button", "add", "+ item");
+  add.onclick = () => {
+    rel.items.push({ title: "New item", body: "", cutLine: false, done: false });
+    touched(); render();
+  };
+  cards.appendChild(add);
+  c.appendChild(cards);
+  return c;
+}
+
+function card(rel, item, ri, ii) {
+  const d = el("div", "card"
+    + (item.cutLine ? " cut" : "") + (item.done ? " done" : ""));
+  d.dataset.release = ri;
+  d.dataset.item = ii;
+
+  const grip = el("div", "grip", "∷");
+  grip.addEventListener("pointerdown", e => startDrag(e, d, "card", { ri, ii }));
+  d.appendChild(grip);
+
+  const tick = document.createElement("input");
+  tick.type = "checkbox";
+  tick.className = "tick";
+  tick.checked = !!item.done;
+  tick.title = "Done";
+  tick.onchange = () => { item.done = tick.checked; touched(); render(); };
+  d.appendChild(tick);
+
+  const body = el("div", "cardbody");
+  const key = ri + ":" + ii;
+  const title = el("div", "ctitle", item.title);
+  title.addEventListener("dblclick", () => {
+    openCards.has(key) ? openCards.delete(key) : openCards.add(key);
+    render();
+  });
+  body.appendChild(editable(title, v => { item.title = v; }));
+
+  if (item.cutLine) body.appendChild(el("div", "cflags", "✂ cut line"));
+  if (openCards.has(key)) {
+    body.appendChild(editable(el("div", "cbody", item.body || "— no note —"),
+      v => { item.body = v; }));
+  }
+  d.appendChild(body);
+
+  const kill = el("button", "kill", "×");
+  kill.title = "Delete this item";
+  kill.onclick = async e => {
+    e.stopPropagation();
+    if (!await ask({ title: "Delete this item?", message: item.title,
+                     buttons: YES_NO("Delete", true) })) return;
+    rel.items.splice(ii, 1); touched(); render();
+  };
+  d.appendChild(kill);
+  return d;
+}
+
+/* Edit in place: the text becomes a field where it sits, and there is no modal
+   anywhere in this app. One interaction, no second surface to design. */
+function editable(node, commit, kind) {
+  node.addEventListener("click", e => {
+    if (node.querySelector("textarea, input")) return;
+    e.stopPropagation();
+    const multiline = kind !== "input";
+    const f = document.createElement(multiline ? "textarea" : "input");
+    if (!multiline) f.className = "edit";
+    const keep = node.textContent;
+    f.value = keep.startsWith("— ") && keep.endsWith(" —") ? "" : keep;
+    node.textContent = "";
+    node.classList.add("editing");   // lifts the clamp; see the CSS note
+    node.appendChild(f);
+    if (multiline) f.style.height = Math.max(70, f.scrollHeight + 14) + "px";
+    f.focus();
+    f.select();
+    const done = () => {
+      node.classList.remove("editing");
+      if (f.value !== keep) { commit(f.value); touched(); }
+      render();
+    };
+    f.addEventListener("blur", done);
+    f.addEventListener("keydown", ev => {
+      if (ev.key === "Escape") { f.value = keep; f.blur(); }
+      if (ev.key === "Enter" && !multiline) f.blur();
+    });
+  });
+  return node;
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+/* ── add and delete ────────────────────────────────────────────────────── */
+
+/* Identity and position are separate: a release keeps its id for life, and
+   dragging changes only where it sits. Inserting is the one place a number is
+   computed -- R0.85 between R0.8 and R0.9, then R1.05, R1.15, R1.17. Four
+   times in this project, and it is why nothing has ever had to be renamed.
+
+   A project that names its releases Spring and Summer simply gets no
+   proposal, which is the tool staying out of the way. */
+function betweenId(before, after) {
+  const num = s => {
+    const m = /^([A-Za-z]*)([\d.]+)$/.exec(s || "");
+    return m ? { prefix: m[1], value: parseFloat(m[2]) } : null;
+  };
+  const a = num(before), b = num(after);
+  if (a && b && a.prefix === b.prefix && b.value > a.value) {
+    return a.prefix + trim((a.value + b.value) / 2);
+  }
+  if (a && !b) return a.prefix + trim(a.value + 0.1);
+  if (!a && b) return (b.prefix || "") + trim(b.value / 2);
+  return "";
+}
+function trim(v) { return v.toFixed(4).replace(/0+$/, "").replace(/\.$/, ""); }
+
+async function insertRelease(index) {
+  const before = DATA.releases[index - 1]?.id;
+  const after = DATA.releases[index]?.id;
+  const id = await ask({
+    title: "New release",
+    message: `Between ${before || "the start"} and ${after || "the end"}.`,
+    value: betweenId(before, after),
+    buttons: [{ label: "Cancel", value: null },
+              { label: "Add", value: "@input", primary: true }],
+  });
+  if (!id) return;
+  DATA.releases.splice(index, 0, {
+    id: id.trim(), size: "?", question: "A question this release answers",
+    prose: "", gate: "", items: []
+  });
+  touched(); render();
+}
+
+/* Names what goes with it before it goes. A column is the only place its items
+   exist, so "delete R1.6" and "delete four pieces of thinking" are the same
+   action and the confirm should say so. */
+async function deleteRelease(ri) {
+  const rel = DATA.releases[ri];
+  if (rel.shipped) {
+    await ask({
+      title: `${rel.id} has shipped`,
+      message: "Its record is a gate document, and deleting it here would "
+        + "claim the release never happened.",
+      buttons: [{ label: "Right", value: null, primary: true }],
+    });
+    return;
+  }
+  const n = rel.items.length;
+  const what = n ? `${rel.id} and its ${n} item${n === 1 ? "" : "s"}` : rel.id;
+  if (!await ask({ title: `Delete ${what}?`, buttons: YES_NO("Delete", true) })) return;
+  DATA.releases.splice(ri, 1);
+  touched(); render();
+}
+
+/* ── dragging, and grab-panning ────────────────────────────────────────── */
+
+/* Pointer events rather than HTML5 drag-and-drop, which does not exist on
+   touch -- and a board you cannot use on the phone is not the board that was
+   asked for. */
+let drag = null;
+let pan = null;
+
+board.addEventListener("pointerdown", e => {
+  // Grab-pan is for mouse and pen. On touch the browser's own scrolling is
+  // better than anything reimplemented here, and hijacking it would cost
+  // momentum and rubber-banding.
+  if (e.pointerType === "touch") return;
+  if (e.target.closest(".chead, .card, .railrow, .gap, button, textarea, input")) return;
+  pan = { x: e.clientX, left: board.scrollLeft };
+  board.classList.add("panning");
+  board.setPointerCapture(e.pointerId);
+});
+board.addEventListener("pointermove", e => {
+  if (!pan) return;
+  board.scrollLeft = pan.left - (e.clientX - pan.x);
+});
+board.addEventListener("pointerup", () => {
+  pan = null; board.classList.remove("panning");
+});
+
+function startDrag(e, node, kind, ref) {
+  if (e.button !== undefined && e.button !== 0) return;
+  if (e.target.closest("textarea, input, .more, button")) return;
+  e.preventDefault();
+  const r = node.getBoundingClientRect();
+  drag = { kind, ref, dx: e.clientX - r.left, dy: e.clientY - r.top, node, moved: false };
+  ghost.innerHTML = "";
+  const clone = node.cloneNode(true);
+  clone.style.width = r.width + "px";
+  clone.style.margin = "0";
+  ghost.appendChild(clone);
+  ghost.style.width = r.width + "px";
+  moveGhost(e);
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp, { once: true });
+}
+
+function moveGhost(e) {
+  ghost.style.left = (e.clientX - drag.dx) + "px";
+  ghost.style.top = (e.clientY - drag.dy) + "px";
+}
+
+function onMove(e) {
+  if (!drag) return;
+  if (!drag.moved) {
+    drag.moved = true;
+    ghost.style.display = "block";
+    drag.node.classList.add("dragging");
+  }
+  moveGhost(e);
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  document.querySelectorAll(".dropline").forEach(n => n.classList.remove("dropline"));
+  const target = drag.kind === "card"
+    ? under?.closest(".column")
+    : under?.closest(".gap");
+  if (target) target.classList.add("dropline");
+}
+
+function onUp(e) {
+  document.removeEventListener("pointermove", onMove);
+  if (!drag) return;
+  const d = drag; drag = null;
+  ghost.style.display = "none";
+  d.node.classList.remove("dragging");
+  document.querySelectorAll(".dropline").forEach(n => n.classList.remove("dropline"));
+  if (!d.moved) return;
+
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+
+  if (d.kind === "card") {
+    const col = under?.closest(".column");
+    if (!col || col.dataset.release === undefined) return;
+    const to = +col.dataset.release;
+    if (DATA.releases[to].shipped) return;
+    const overCard = under?.closest(".card");
+    const item = DATA.releases[d.ref.ri].items.splice(d.ref.ii, 1)[0];
+    let at = DATA.releases[to].items.length;
+    if (overCard && +overCard.dataset.release === to) {
+      at = +overCard.dataset.item;
+      if (to === d.ref.ri && at > d.ref.ii) at--;
+    }
+    DATA.releases[to].items.splice(at, 0, item);
+    touched(); render();
+    return;
+  }
+
+  const g = under?.closest(".gap");
+  const col = under?.closest(".column");
+  let at = g ? +g.dataset.at
+            : col?.dataset.release !== undefined ? +col.dataset.release : null;
+  if (at === null || at === undefined || Number.isNaN(at)) return;
+  const rel = DATA.releases.splice(d.ref.ri, 1)[0];
+  if (at > d.ref.ri) at--;
+  DATA.releases.splice(Math.max(0, Math.min(at, DATA.releases.length)), 0, rel);
+  touched(); render();
+}
+
+/* Draw the empty board first so the page is never blank while the network is
+   thinking, then go and get the real thing -- or ask which project this is. */
+render();
+pull();
+</script>
+</body>
+</html>
