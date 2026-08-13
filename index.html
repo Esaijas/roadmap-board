@@ -117,6 +117,12 @@ button:disabled { opacity: .5; cursor: default; }
   overflow-y: auto;
 }
 .sheet[hidden] { display: none; }
+
+/* Asking always happens *on top of* whatever asked. Both sheets sat at the
+   same depth and `#ask` is first in the document, so settings painted over it
+   -- invisible until the day something in settings asked a question, which is
+   the day the config file arrived. */
+#ask { z-index: 70; }
 .sheetbox {
   background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
   padding: 18px 20px 16px; width: min(460px, 100%); margin-top: 6vh;
@@ -144,6 +150,16 @@ button:disabled { opacity: .5; cursor: default; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
 }
 .sheetrow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+
+/* Selectable, and scrolls rather than stretching the sheet: it is the fallback
+   for a page that may save no file and reach no clipboard. */
+pre.code {
+  margin: 0; padding: 10px; border-radius: 6px; max-height: 40vh; overflow: auto;
+  background: var(--column); border: 1px solid var(--line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+  user-select: text; white-space: pre;
+}
+.sheetbox.dropping { outline: 2px dashed var(--accent); outline-offset: 4px; }
 button.quiet { border-color: transparent; color: var(--ink3); }
 button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 
@@ -351,7 +367,13 @@ textarea { font-size: 12.5px; }
     </ol>
     <p class="fine">The token stays in this browser and is never written into the file.
       Somebody else opening this page finds empty fields.</p>
-    <div class="sheetrow"><button class="primary" id="startSetup">Set it up</button></div>
+    <p class="fine">Given a <strong>config file</strong> by your project, drop it
+      anywhere on this panel instead &mdash; it fills in everything but the token.</p>
+    <div class="sheetrow">
+      <button id="loadConfigFirst">Load a config file</button>
+      <span class="spacer"></span>
+      <button class="primary" id="startSetup">Set it up</button>
+    </div>
   </div>
 </div>
 
@@ -375,6 +397,11 @@ textarea { font-size: 12.5px; }
       <span class="fine">Fine-grained, this repository only, Contents: read and write.
         Kept in this browser.</span>
     </label>
+    <div class="sheetrow">
+      <button id="loadConfig">Load a config file</button>
+      <button id="saveConfig">Save one</button>
+      <span class="fine" id="dropHint">or drop one here</span>
+    </div>
     <div class="sheetrow">
       <button id="forget" class="quiet">Forget this device</button>
       <span class="spacer"></span>
@@ -669,13 +696,14 @@ function say(text, bad) {
    that sandbox it, so it cannot depend on them.
 
    Resolves to a button's value, or null on Escape or a click outside. */
-function ask({ title, message, value, buttons }) {
+function ask({ title, message, code, value, buttons }) {
   return new Promise(resolve => {
     const sheet = document.getElementById("ask");
     const box = document.getElementById("askbox");
     box.textContent = "";
     box.appendChild(el("h2", null, title));
     if (message) box.appendChild(el("p", null, message));
+    if (code) box.appendChild(el("pre", "code", code));
 
     let input = null;
     if (value !== undefined) {
@@ -791,6 +819,151 @@ function openSettings() {
 document.getElementById("gear").onclick = openSettings;
 document.getElementById("startSetup").onclick = openSettings;
 document.getElementById("cancelSettings").onclick = () => { panel.hidden = true; };
+
+/* ── the config file ───────────────────────────────────────────────────── */
+
+/* **A project hands somebody a file rather than a table of six values to
+   retype.** Five of the six are the same for everybody on that project and
+   none of them are secret; only the token differs per person, and the token is
+   the one thing this file must never carry.
+
+   That is not caution for its own sake. A config file is *made* to be
+   committed, mailed and pasted into chats -- that is the whole reason it
+   exists -- so a format that may carry a credential is a format whose whole
+   purpose is to move a credential around. The token is typed once per browser
+   and stays there, and the same test applies as everywhere else in this
+   project: **could a stranger holding this file act as me?** No. It names a
+   repository, which is not a secret from anybody who can already read it. */
+const CONFIG_FIELDS = ["owner", "repo", "branch", "path", "message"];
+const CONFIG_NAME = "pure-planner.json";
+
+function configText() {
+  const out = { pureplanner: 1 };
+  CONFIG_FIELDS.forEach(f => { out[f] = cfg[f]; });
+  return JSON.stringify(out, null, 2) + "\n";
+}
+
+/* The marker earns its place the first time somebody drops the wrong file.
+   `roadmap.json` is the file sitting right beside this one in every project
+   that uses it, it is also JSON, and without a marker it would parse happily
+   and configure the board to nothing. */
+function readConfig(text) {
+  let c;
+  try { c = JSON.parse(text); }
+  catch (e) { return { error: "that file is not JSON — " + e.message }; }
+  if (!c || typeof c !== "object" || c.pureplanner !== 1) {
+    return { error: `that is not a ${CONFIG_NAME} — it has no "pureplanner": 1` };
+  }
+  if (!c.owner || !c.repo) return { error: "that config names no owner and repository" };
+  return { conf: c };
+}
+
+async function applyConfig(text) {
+  const { error, conf } = readConfig(text);
+  if (error) { say(error, true); return; }
+
+  /* **Flush before switching.** A drop is most likely a few seconds after
+     somebody stopped editing, which is exactly the window the debounce holds
+     open -- so switching first would throw away the edit that prompted it. */
+  if (saveTimer) {
+    clearTimeout(saveTimer); saveTimer = null;
+    say("saving before switching…");
+    await push();
+  }
+  CONFIG_FIELDS.forEach(f => {
+    if (conf[f] !== undefined && conf[f] !== null) cfg[f] = String(conf[f]).trim();
+  });
+  if (!cfg.branch) cfg.branch = "main";
+  if (!cfg.path) cfg.path = DEFAULTS.path;
+  if (!cfg.message) cfg.message = DEFAULTS.message;
+  store();
+  fields.forEach(f => { document.getElementById("f_" + f).value = cfg[f] || ""; });
+  sha = null;
+  document.getElementById("firstrun").hidden = true;
+
+  /* With a token already here it just connects. Without one the panel stays
+     open on the only field the file could not fill, rather than reporting a
+     failure the person could not have avoided. */
+  if (cfg.token) { panel.hidden = true; pull(); }
+  else {
+    panel.hidden = false;
+    document.getElementById("f_token").focus();
+    say(`${cfg.owner}/${cfg.repo} — paste a token to connect`);
+  }
+}
+
+const picker = document.createElement("input");
+picker.type = "file";
+picker.accept = ".json,application/json";
+picker.hidden = true;
+picker.onchange = async () => {
+  const file = picker.files[0];
+  if (file) await applyConfig(await file.text());
+  picker.value = "";           // so choosing the same file twice still fires
+};
+document.body.appendChild(picker);
+
+document.getElementById("loadConfig").onclick = () => picker.click();
+document.getElementById("loadConfigFirst").onclick = () => picker.click();
+
+/* Dropping is the gesture that was asked for; the button beside it is what
+   makes the feature exist on a phone, where there is nothing to drop from. */
+["settings", "firstrun"].forEach(id => {
+  const sheet = document.getElementById(id);
+  sheet.addEventListener("dragover", e => {
+    e.preventDefault();
+    sheet.querySelector(".sheetbox").classList.add("dropping");
+  });
+  sheet.addEventListener("dragleave", e => {
+    if (e.target === sheet) sheet.querySelector(".sheetbox").classList.remove("dropping");
+  });
+  sheet.addEventListener("drop", async e => {
+    e.preventDefault();
+    sheet.querySelector(".sheetbox").classList.remove("dropping");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) await applyConfig(await file.text());
+  });
+});
+
+/* Download and clipboard are both refused in places this page is meant to run
+   -- a frame without `allow-downloads`, a context the clipboard API calls
+   insecure -- so neither is the only way out. The text is on screen and
+   selectable whatever happens, which is the same rule the gate report follows:
+   a convenience that only works for some must still degrade to something
+   everybody can use. */
+document.getElementById("saveConfig").onclick = async () => {
+  const text = configText();
+  const choice = await ask({
+    title: "Config file",
+    message: "Everything but the token. Commit it beside your plan, and anybody "
+      + "on the project drops it in instead of typing five fields.",
+    code: text,
+    buttons: [
+      { label: "Close", value: null },
+      { label: "Copy", value: "copy" },
+      { label: "Download", value: "save", primary: true },
+    ],
+  });
+  if (choice === "save") {
+    try {
+      const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = CONFIG_NAME;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      say("saved " + CONFIG_NAME);
+    } catch (e) {
+      say("this page is not allowed to save a file — copy the text instead", true);
+    }
+  } else if (choice === "copy") {
+    try {
+      await navigator.clipboard.writeText(text);
+      say("config copied");
+    } catch {
+      say("could not reach the clipboard — select the text and copy it", true);
+    }
+  }
+};
 /* **These fields are filled by pasting, so they are cleaned like paste.** Not
    defensiveness for its own sake -- each of these is something that actually
    arrives. A field's own label comes along with the value ("Repository
