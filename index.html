@@ -159,7 +159,23 @@ pre.code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
   user-select: text; white-space: pre;
 }
-.sheetbox.dropping { outline: 2px dashed var(--accent); outline-offset: 4px; }
+/* **A named place to aim at.** The whole panel accepts a drop and always did,
+   but a surface that accepts one and does not say so is a surface nobody
+   tries. It doubles as the button, because the same people who cannot drag --
+   anybody on a phone -- are the ones who need it most. */
+.drop {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  padding: 13px 14px; border: 2px dashed var(--line2); border-radius: 8px;
+  background: var(--column); color: var(--ink); cursor: pointer;
+}
+.drop:hover { border-color: var(--accent); }
+.drop strong { font-size: 13px; font-weight: 600; display: block; }
+.drop .fine { display: block; margin-top: 1px; }
+.dropmark { font-size: 19px; color: var(--ink3); line-height: 1; }
+.drop.over {
+  border-color: var(--accent); border-style: solid; background: var(--drop);
+}
+.drop.over .dropmark { color: var(--accent); }
 button.quiet { border-color: transparent; color: var(--ink3); }
 button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 
@@ -367,12 +383,15 @@ textarea { font-size: 12.5px; }
     </ol>
     <p class="fine">The token stays in this browser and is never written into the file.
       Somebody else opening this page finds empty fields.</p>
-    <p class="fine">Given a <strong>config file</strong> by your project, drop it
-      anywhere on this panel instead &mdash; it fills in everything but the token.</p>
+    <button class="drop" id="dropFirst">
+      <span class="dropmark">&#8615;</span>
+      <span><strong>Drop a config file here</strong>
+        <span class="fine">or click to choose one &mdash; your project should have a
+          <code>*-config.json</code></span></span>
+    </button>
     <div class="sheetrow">
-      <button id="loadConfigFirst">Load a config file</button>
       <span class="spacer"></span>
-      <button class="primary" id="startSetup">Set it up</button>
+      <button class="primary" id="startSetup">Set it up by hand</button>
     </div>
   </div>
 </div>
@@ -382,6 +401,11 @@ textarea { font-size: 12.5px; }
 <div id="settings" class="sheet" hidden>
   <div class="sheetbox">
     <h2>Project</h2>
+    <button class="drop" id="dropHere">
+      <span class="dropmark">&#8615;</span>
+      <span><strong>Drop a config file here</strong>
+        <span class="fine">or click to choose one &mdash; fills everything but the token</span></span>
+    </button>
     <label>Owner<input id="f_owner" autocomplete="off" spellcheck="false" placeholder="octocat"></label>
     <label>Repository<input id="f_repo" autocomplete="off" spellcheck="false" placeholder="my-project"></label>
     <label>Branch<input id="f_branch" autocomplete="off" spellcheck="false" placeholder="main"></label>
@@ -398,9 +422,8 @@ textarea { font-size: 12.5px; }
         Kept in this browser.</span>
     </label>
     <div class="sheetrow">
-      <button id="loadConfig">Load a config file</button>
-      <button id="saveConfig">Save one</button>
-      <span class="fine" id="dropHint">or drop one here</span>
+      <button id="saveConfig">Save a config file</button>
+      <span class="fine">for the project above, without the token</span>
     </div>
     <div class="sheetrow">
       <button id="forget" class="quiet">Forget this device</button>
@@ -835,7 +858,10 @@ document.getElementById("cancelSettings").onclick = () => { panel.hidden = true;
    project: **could a stranger holding this file act as me?** No. It names a
    repository, which is not a secret from anybody who can already read it. */
 const CONFIG_FIELDS = ["owner", "repo", "branch", "path", "message"];
-const CONFIG_NAME = "pure-planner.json";
+/* Named so the file says what it is in a folder full of things that do not.
+   `pure-planner.json` looked like a plan; `-config` is the word somebody scans
+   for when they have been told to go and find one. */
+const CONFIG_NAME = "pure-planner-config.json";
 
 function configText() {
   const out = { pureplanner: 1 };
@@ -903,23 +929,22 @@ picker.onchange = async () => {
 };
 document.body.appendChild(picker);
 
-document.getElementById("loadConfig").onclick = () => picker.click();
-document.getElementById("loadConfigFirst").onclick = () => picker.click();
-
-/* Dropping is the gesture that was asked for; the button beside it is what
-   makes the feature exist on a phone, where there is nothing to drop from. */
+/* **The whole panel takes a drop; the zone is what says so.** Aiming is a
+   courtesy rather than a requirement -- a file let go anywhere on the sheet
+   still lands -- but a target that is only discoverable by trying it is a
+   target nobody tries, and the zone is also the button, for everybody holding
+   a phone with nothing to drag from. */
 ["settings", "firstrun"].forEach(id => {
   const sheet = document.getElementById(id);
-  sheet.addEventListener("dragover", e => {
-    e.preventDefault();
-    sheet.querySelector(".sheetbox").classList.add("dropping");
-  });
-  sheet.addEventListener("dragleave", e => {
-    if (e.target === sheet) sheet.querySelector(".sheetbox").classList.remove("dropping");
-  });
+  const zone = sheet.querySelector(".drop");
+  zone.onclick = () => picker.click();
+
+  const over = on => zone.classList.toggle("over", on);
+  sheet.addEventListener("dragover", e => { e.preventDefault(); over(true); });
+  sheet.addEventListener("dragleave", e => { if (e.target === sheet) over(false); });
   sheet.addEventListener("drop", async e => {
     e.preventDefault();
-    sheet.querySelector(".sheetbox").classList.remove("dropping");
+    over(false);
     const file = e.dataTransfer?.files?.[0];
     if (file) await applyConfig(await file.text());
   });
