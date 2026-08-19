@@ -1119,7 +1119,10 @@ function column(rel, ri) {
   const head = el("div", "chead");
 
   const row = el("div", "crow");
-  row.appendChild(editable(el("div", "cid", rel.id), v => { rel.id = v; }, "input"));
+  /* Typing an id is now how a major is declared -- RX.0 opens one and carries
+     everything to its right -- so the edit has to be followed by a reflow. */
+  row.appendChild(editable(el("div", "cid", rel.id),
+    v => { rel.id = v; reflow(); }, "input"));
   const kill = el("button", "kill", "×");
   kill.title = "Delete this release";
   kill.onclick = e => { e.stopPropagation(); deleteRelease(ri); };
@@ -1256,35 +1259,143 @@ function el(tag, cls, text) {
 
 /* ── add and delete ────────────────────────────────────────────────────── */
 
-/* Identity and position are separate: a release keeps its id for life, and
-   dragging changes only where it sits. Inserting is the one place a number is
-   computed -- R0.85 between R0.8 and R0.9, then R1.05, R1.15, R1.17. Four
-   times in this project, and it is why nothing has ever had to be renamed.
+/* ── numbering follows position ────────────────────────────────────────── */
 
-   A project that names its releases Spring and Summer simply gets no
-   proposal, which is the tool staying out of the way. */
-function betweenId(before, after) {
-  const num = s => {
-    const m = /^([A-Za-z]*)([\d.]+)$/.exec(s || "");
-    return m ? { prefix: m[1], value: parseFloat(m[2]) } : null;
-  };
-  const a = num(before), b = num(after);
-  if (a && b && a.prefix === b.prefix && b.value > a.value) {
-    return a.prefix + trim((a.value + b.value) / 2);
-  }
-  if (a && !b) return a.prefix + trim(a.value + 0.1);
-  if (!a && b) return (b.prefix || "") + trim(b.value / 2);
-  return "";
+/* **The major is a boundary somebody places; the minors flow from order.**
+   A release whose minor is 0 -- R2.0 -- opens a major, and everything to its
+   right belongs to that major until the next one opens. Everything to its left
+   belongs to the previous. Within a major the minors run 1, 2, 3 in board
+   order, so dragging a column renames it and its neighbours and the heads read
+   in order at a glance.
+
+   **Shipped releases are never touched.** Their ids are in release documents,
+   in gates.md, in generated Kotlin and in verdicts stored on a phone; a number
+   that has been reported against is a fact rather than a position. So a major
+   already partly shipped continues after its highest shipped minor -- major 1
+   has shipped 1.0 and 1.05, so its unbuilt releases start at 1.1.
+
+   This is a reversal, and worth saying so plainly rather than quietly: the
+   tool was built refusing to renumber, on the grounds that a plan whose
+   numbers move under you cannot be referred to. The answer to that objection
+   is the rewrite pass below -- references move with the release. What remains
+   true is that an id which has left this file, in a document or a phone, is
+   beyond the tool's reach, which is exactly why shipped ones are frozen.
+
+   A project whose releases are called Spring and Summer parses as no major and
+   no minor, so nothing is renumbered and the tool stays out of the way. */
+const ID_RE = /^([A-Za-z]*)(\d+)\.(\d+)$/;
+
+function parseId(id) {
+  const m = ID_RE.exec((id || "").trim());
+  if (!m) return null;
+  return { prefix: m[1], major: parseInt(m[2], 10), minor: m[3] };
 }
-function trim(v) { return v.toFixed(4).replace(/0+$/, "").replace(/\.$/, ""); }
+
+function renumber() {
+  const parsed = DATA.releases.map(r => ({ rel: r, id: parseId(r.id) }));
+  if (!parsed.some(p => p.id)) return {};        // Spring, Summer, Autumn
+
+  /* A major already partly shipped resumes above its highest shipped minor,
+     read as a decimal because that is what these ids are: 1.05 sits between
+     1.0 and 1.1, which is the whole reason the old scheme could insert. */
+  const shippedTop = {};
+  parsed.forEach(({ rel, id }) => {
+    if (!rel.shipped || !id) return;
+    const v = parseFloat(`0.${id.minor}`);
+    shippedTop[id.major] = Math.max(shippedTop[id.major] ?? -1, v);
+  });
+
+  const prefix = parsed.find(p => p.id)?.id.prefix ?? "";
+  let major = null, next = 0;
+  const renames = {};
+
+  const openMajor = m => {
+    major = m;
+    const top = shippedTop[m];
+    next = top === undefined ? 0 : Math.floor(top) + 1;
+  };
+
+  parsed.forEach(({ rel, id }) => {
+    if (!id) return;                              // leave anything unparseable
+    if (rel.shipped) { if (major === null) openMajor(id.major); major = id.major; return; }
+    if (major === null || id.major > major || Number(id.minor) === 0) {
+      if (major === null || id.major !== major) openMajor(id.major);
+    }
+    const want = `${prefix}${major}.${next++}`;
+    if (want !== rel.id) { renames[rel.id] = want; rel.id = want; }
+  });
+  return renames;
+}
+
+/* **A renumbering that does not move the sentences is a corruption.** Eight
+   places in this project's own plan name another release -- "R1.2 downloads an
+   offline map", "moved here from R1.15" -- and each one is a lie the moment
+   the number under it changes.
+
+   One pass, from the old ids to the new, so a chain never forms: rename A to B
+   while B becomes C, and a sequential replace turns every A into C. Only whole
+   ids that actually moved are matched, so an "R1" meaning the series survives
+   and a version like 1.05.305 is not a release id at all. */
+function rewriteReferences(renames) {
+  const olds = Object.keys(renames);
+  if (!olds.length) return 0;
+  const alt = olds.sort((a, b) => b.length - a.length)
+                  .map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  /* The lookahead has to refuse a digit but allow a full stop, because most
+     references to a release sit at the end of a sentence -- "moved here from
+     R1.15." -- and a blanket "not followed by a dot" leaves exactly those
+     behind. It still refuses `.5`, so a version like 1.05.305 is not mistaken
+     for an id with something after it. */
+  const re = new RegExp(`(^|[^\\w.])(${alt})(?![\\w])(?!\\.\\d)`, "g");
+  let n = 0;
+  const fix = t => (t || "").replace(re, (m, pre, id) => { n++; return pre + renames[id]; });
+  DATA.releases.forEach(r => {
+    r.prose = fix(r.prose);
+    r.gate = fix(r.gate);
+    (r.items || []).forEach(i => { i.body = fix(i.body); i.title = fix(i.title); });
+  });
+  return n;
+}
+
+/* Renumber, move the references with it, and say what happened -- a number
+   changing by itself is alarming unless something admits to doing it. */
+function reflow() {
+  const renames = renumber();
+  const moved = Object.keys(renames).length;
+  if (!moved) return;
+  const refs = rewriteReferences(renames);
+  const first = Object.entries(renames)[0];
+  say(moved === 1
+    ? `${first[0]} is now ${first[1]}` + (refs ? `, and ${refs} mention${refs > 1 ? "s" : ""} of it` : "")
+    : `renumbered ${moved} releases` + (refs ? `, and ${refs} mentions` : ""));
+}
+
+/* What the new column will be called, which reflow decides a moment later --
+   so this is a courtesy rather than a computation, and it is why the sheet
+   says the proposal is usually right. Inserting between two ids used to need
+   the midpoint between them, which is where R0.85, R1.05, R1.15 and R1.17 came
+   from; position names them now and that arithmetic is gone with the rule it
+   served. */
+function nextId(index) {
+  for (let i = index - 1; i >= 0; i--) {
+    const p = parseId(DATA.releases[i].id);
+    if (p) return `${p.prefix}${p.major}.${Number(p.minor) + 1}`;
+  }
+  const first = DATA.releases.map(r => parseId(r.id)).find(Boolean);
+  return first ? `${first.prefix}${first.major}.0` : "";
+}
+
 
 async function insertRelease(index) {
   const before = DATA.releases[index - 1]?.id;
   const after = DATA.releases[index]?.id;
   const id = await ask({
     title: "New release",
-    message: `Between ${before || "the start"} and ${after || "the end"}.`,
-    value: betweenId(before, after),
+    message: `Between ${before || "the start"} and ${after || "the end"}.`
+      + " Its number comes from where it sits, so leaving this as proposed is"
+      + " usually right — type something ending .0 to start a new major, and"
+      + " everything to its right joins it.",
+    value: nextId(index),
     buttons: [{ label: "Cancel", value: null },
               { label: "Add", value: "@input", primary: true }],
   });
@@ -1293,6 +1404,7 @@ async function insertRelease(index) {
     id: id.trim(), size: "?", question: "A question this release answers",
     prose: "", gate: "", items: []
   });
+  reflow();
   touched(); render();
 }
 
@@ -1314,6 +1426,7 @@ async function deleteRelease(ri) {
   const what = n ? `${rel.id} and its ${n} item${n === 1 ? "" : "s"}` : rel.id;
   if (!await ask({ title: `Delete ${what}?`, buttons: YES_NO("Delete", true) })) return;
   DATA.releases.splice(ri, 1);
+  reflow();
   touched(); render();
 }
 
@@ -1417,6 +1530,7 @@ function onUp(e) {
   const rel = DATA.releases.splice(d.ref.ri, 1)[0];
   if (at > d.ref.ri) at--;
   DATA.releases.splice(Math.max(0, Math.min(at, DATA.releases.length)), 0, rel);
+  reflow();
   touched(); render();
 }
 
