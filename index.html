@@ -303,10 +303,24 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
   background: var(--column); padding: 10px 12px 6px;
 }
 .crow:active { cursor: grabbing; }
+/* **The id is the one thing in this row that is not a handle.** The row drags
+   the column, and `startDrag` calls `preventDefault`, which suppresses the
+   click that would have opened the editor -- so the id has to be refused there
+   the same way a button is. It broke the day the row was hoisted out of the
+   head to make the column scroll as one, and nothing about the id looked
+   different, which is why it took a while to be noticed.
+
+   The hit area is the text and three pixels around it. `margin-right: auto`
+   pushes the × to the right without `.cid` stretching to meet it -- `flex: 1`
+   did that, and made three quarters of a column head open an id editor. */
 .cid {
   font-size: 11px; font-weight: 700; letter-spacing: .08em;
-  color: var(--ink3); text-transform: uppercase; flex: 1;
+  color: var(--ink3); text-transform: uppercase;
+  margin-right: auto; margin-left: -4px; padding: 1px 4px;
+  border-radius: 4px; cursor: text;
 }
+.cid:hover { background: var(--card); color: var(--ink2); }
+.cid.editing { width: 7em; padding: 0; margin-left: 0; }
 .kill {
   border: none; background: none; color: var(--ink3); padding: 0 3px;
   font-size: 14px; line-height: 1; cursor: pointer;
@@ -554,7 +568,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v15 · 2026-08-22";
+const VERSION = "v16 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -1718,7 +1732,14 @@ board.addEventListener("pointerdown", e => {
   // better than anything reimplemented here, and hijacking it would cost
   // momentum and rubber-banding.
   if (e.pointerType === "touch") return;
-  if (e.target.closest(".chead, .card, .railrow, .gap, button, textarea, input")) return;
+  /* **A column is not background.** This used to name the pieces of a column
+     -- `.chead`, `.card` -- and then the id row was hoisted out of the head so
+     the column could scroll as one, which quietly took it out of this list.
+     Pressing the id started a pan, the pan retargeted the click, and the id
+     editor stopped opening for a reason nothing about the id could show. The
+     guard is the column itself now, so moving a piece around inside one cannot
+     take it out again. */
+  if (e.target.closest(".column, .railrow, .gap, button, textarea, input")) return;
   pan = { x: e.clientX, left: board.scrollLeft };
   board.classList.add("panning");
   board.setPointerCapture(e.pointerId);
@@ -1733,7 +1754,7 @@ board.addEventListener("pointerup", () => {
 
 function startDrag(e, node, kind, ref) {
   if (e.button !== undefined && e.button !== 0) return;
-  if (e.target.closest("textarea, input, .more, button")) return;
+  if (e.target.closest("textarea, input, .more, button, .cid")) return;
   e.preventDefault();
   const r = node.getBoundingClientRect();
   drag = { kind, ref, dx: e.clientX - r.left, dy: e.clientY - r.top, node, moved: false };
