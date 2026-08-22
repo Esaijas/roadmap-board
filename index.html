@@ -97,6 +97,8 @@ h1 { font-size: 15px; font-weight: 600; margin: 0; }
   border-left: 1px solid var(--line2); margin-left: 2px;
 }
 .project:empty { display: none; }
+
+#version { font-variant-numeric: tabular-nums; }
 .status { color: var(--ink3); font-size: 12px; }
 .spacer { flex: 1; }
 button {
@@ -214,10 +216,17 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 }
 #board.panning { cursor: grabbing; scroll-behavior: auto; }
 
+/* **The column scrolls as one thing, head and all.** The cards used to scroll
+   inside a fixed head, which reads as economical -- the argument for the
+   release stays put while you work through its items -- and is wrong for how
+   this is actually read. The prose *is* the column; scrolling to the bottom of
+   a long release and leaving its reasoning pinned above turns the argument
+   into furniture. So one scroller, and the whole thing moves. */
 .column {
   flex: 0 0 292px; max-height: 100%; display: flex; flex-direction: column;
   background: var(--column); border: 1px solid var(--line);
   border-radius: 8px; margin: 0 2px;
+  overflow-y: auto; scrollbar-width: thin;
 }
 .column.dragging { opacity: .4; }
 
@@ -281,9 +290,20 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 
 @media (max-width: 700px) { #shipped { flex-basis: 190px; } }
 
-.chead { padding: 10px 12px 9px; border-bottom: 1px solid var(--line); cursor: grab; }
+.chead {
+  flex: 0 0 auto;
+  padding: 0 12px 9px; border-bottom: 1px solid var(--line); cursor: grab;
+}
 .chead:active { cursor: grabbing; }
-.crow { display: flex; align-items: baseline; gap: 8px; }
+/* The one part that stays. Everything else scrolls away, and the head is the
+   drag handle -- a column you cannot pick up without scrolling back to the top
+   would be the cost of the change above, paid every time. */
+.crow {
+  display: flex; align-items: baseline; gap: 8px; flex: 0 0 auto;
+  position: sticky; top: 0; z-index: 2; cursor: grab;
+  background: var(--column); padding: 10px 12px 6px;
+}
+.crow:active { cursor: grabbing; }
 .cid {
   font-size: 11px; font-weight: 700; letter-spacing: .08em;
   color: var(--ink3); text-transform: uppercase; flex: 1;
@@ -319,7 +339,7 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 .cmeta { margin-top: 9px; font-size: 11.5px; color: var(--ink3); }
 .cmeta .prog { color: var(--done); }
 
-.cards { overflow-y: auto; padding: 6px; flex: 1; min-height: 30px; }
+.cards { padding: 6px; flex: 0 0 auto; min-height: 30px; }
 
 .card {
   display: flex; gap: 6px; align-items: flex-start;
@@ -458,6 +478,10 @@ textarea { font-size: 12.5px; }
       <span class="fine">for the project above, without the token</span>
     </div>
     <div class="sheetrow">
+      <span class="fine" id="version"></span>
+      <button id="copyVersion" title="Copy the version to the clipboard">copy</button>
+    </div>
+    <div class="sheetrow">
       <button id="forget" class="quiet">Forget this device</button>
       <span class="spacer"></span>
       <button id="cancelSettings">Cancel</button>
@@ -506,6 +530,21 @@ let DATA = { title: "", releases: [] };
    -- so declaring it lower put it in the temporal dead zone and threw, but
    only in the one environment where that path is taken. */
 let remembers = true;
+
+/* **Which build is this?** Twice in one evening the answer had to be inferred
+   from the wording of an error message, because a page served from a static
+   host looks identical whether or not the last upload took. The count is of
+   commits that have changed this file -- the same idiom `versionName` uses in
+   the app this was built for, where a hash identifies a commit and orders
+   nothing, and the question somebody holding a copy actually has is whether
+   theirs is the newer one.
+   **Bump it whenever this file changes.** One constant, one edit.
+
+   Declared up here with the other constants rather than beside the line that
+   reads it: that line runs in the settings section, further up the file, and a
+   `const` below its first use is a temporal dead zone -- the second time this
+   file has been broken by exactly that. */
+const VERSION = "v10 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -893,6 +932,28 @@ function openSettings() {
    at generation; go back afterwards and it displays an abbreviation, which
    pastes cleanly and is refused as "Bad credentials". */
 const TOKEN_LENGTH = 93;
+document.getElementById("version").textContent = "Pure planner " + VERSION;
+
+/* It is quoted back to me when something is wrong, so it wants to travel in
+   one press rather than by being read off a screen and retyped. The button
+   says what happened, because the status line is behind this sheet. */
+document.getElementById("copyVersion").onclick = async e => {
+  const b = e.currentTarget;
+  const text = "Pure planner " + VERSION;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const box = document.createElement("textarea");
+    box.value = text;
+    document.body.appendChild(box);
+    box.select();
+    try { document.execCommand("copy"); } catch { /* nothing left to try */ }
+    box.remove();
+  }
+  b.textContent = "copied";
+  setTimeout(() => { b.textContent = "copy"; }, 1600);
+};
+
 const tokenBox = document.getElementById("f_token");
 const tokenLen = document.getElementById("tokenLen");
 
@@ -1189,8 +1250,10 @@ function column(rel, ri) {
   c.dataset.release = ri;
   if (open.has(rel.id)) c.classList.add("open");
 
-  const head = el("div", "chead");
-
+  /* The id row is a child of the *column*, not of the head. Sticky only holds
+     inside its own parent's box, and the head scrolls away in one screenful --
+     so a row that lives in the head goes with it, which is what a first
+     attempt at this proved. */
   const row = el("div", "crow");
   /* Typing an id is now how a major is declared -- RX.0 opens one and carries
      everything to its right -- so the edit has to be followed by a reflow. */
@@ -1200,10 +1263,19 @@ function column(rel, ri) {
   kill.title = "Delete this release";
   kill.onclick = e => { e.stopPropagation(); deleteRelease(ri); };
   row.appendChild(kill);
-  head.appendChild(row);
+  row.addEventListener("pointerdown", e => startDrag(e, c, "column", { ri }));
+  c.appendChild(row);
 
+  const head = el("div", "chead");
   head.appendChild(editable(el("div", "cq", rel.question), v => { rel.question = v; }));
-  head.appendChild(editable(el("div", "prose", rel.prose || ""), v => { rel.prose = v; }));
+  /* **An empty prose used to render an empty div**, which is nothing to look
+     at and nothing to click -- so a release created from the + had a question
+     and no visible way to say why it exists. The placeholder follows the same
+     `— … —` convention the gate uses, which `editable` already recognises and
+     clears on the way in. */
+  head.appendChild(editable(
+    el("div", "prose", rel.prose || "— why this release exists —"),
+    v => { rel.prose = v; }));
   head.appendChild(el("div", "eyebrow", "Gate"));
   head.appendChild(editable(
     el("div", "gate", rel.gate || "— not written yet —"),
