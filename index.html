@@ -471,21 +471,49 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
    a worse problem than the one being fixed. So the glyph grows to 15 and the
    chrome stays away.
 
-   **The hit area is still 22 square** -- the smallest thing worth aiming a
-   thumb at -- and it is invisible, which is the point: a tap target costs
-   nothing to make generous and everything to draw. Nothing else moves either,
-   since this is still `flex: 0 0 auto` in the same row and the height sits
-   inside the card's existing padding.
+   **It sits on the `×`'s centre line, and the negative margin is what puts it
+   there.** The card is `align-items: flex-start`, so two controls in the same
+   row line up by their *tops* -- and a 22 px box beside the kill's 14 px one
+   drops its glyph four pixels lower than the ×, which is the misalignment that
+   made this look wrong however big the glyph got. Shrinking the box would fix
+   the look and lose the tap target, so the box stays 22 square and `margin:
+   -4px -2px` pulls its *layout* size back to the kill's 14 by 18. Aligned,
+   and still 22 square under a thumb.
+
+   **A chevron, and not a triangle.** `▸` is a *filled* shape pointing sideways,
+   which is the play button -- it says *run this*, and it was read that way.
+   Disclosure is a stroked chevron: two lines meeting at an angle, the mark
+   every accordion and every phone settings list uses for *there is more here*.
+   Filled means act; stroked means unfold.
+
+   **It points down when shut and up when open**, which is the direction
+   language this file already speaks: the column head's own `more ▾` / `less ▴`
+   says exactly that about exactly this action. A card unfolds downward, so
+   down is *open me*. The sideways-then-down convention it replaced belongs to
+   a file tree, where what opens is a branch rather than a panel.
+
+   **Drawn rather than typed**, and that is what ends this argument for good.
+   Unicode's triangles are drawn deliberately below their em -- U+25B8 at 15 px
+   looked lighter than a 14 px `×` beside it -- so matching them to anything
+   meant guessing at a font's internal proportions and measuring the result. An
+   inline SVG has the stroke weight, the size and the optical centre stated in
+   the file, and the header's own mark is already drawn this way.
 
    Resting in `--ink2` rather than `--ink3`, because with no box the ink is the
    only thing saying it is there, and `ink3` is the shade this file uses for
-   text that is deliberately receding. */
+   text that is deliberately receding. The `×` keeps `ink3`: opening a card is
+   the thing you do, and deleting one is not. */
 .caret {
-  flex: 0 0 auto; width: 22px; height: 22px; padding: 0;
+  flex: 0 0 auto; width: 22px; height: 22px; padding: 0; margin: -4px -2px;
   display: flex; align-items: center; justify-content: center;
-  border: none; background: none; color: var(--ink2);
-  font-size: 15px; line-height: 1; cursor: pointer;
+  border: none; background: none; color: var(--ink2); cursor: pointer;
 }
+/* The one element, rotated -- so open and shut are the same drawing and the
+   turn between them is visible. `aria-expanded` already carries the state for
+   a screen reader, so it drives the rotation too rather than a second class
+   that could disagree with it. */
+.caret svg { width: 14px; height: 14px; transition: transform .15s ease; }
+.caret[aria-expanded="true"] svg { transform: rotate(180deg); }
 .caret:hover { color: var(--ink); }
 .caret:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 
@@ -694,7 +722,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v21 · 2026-08-22";
+const VERSION = "v23 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -1742,6 +1770,14 @@ function column(rel, ri) {
   return c;
 }
 
+/* Pointing down, and rotated by CSS when the card is open. `stroke-linecap`
+   round is what keeps it from reading as an arrowhead at 14 px; 1.9 is the
+   weight at which it sits beside a 14 px `×` without either one shouting. */
+const CHEVRON =
+  '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+  '<path d="M4 6.25 8 10.25 12 6.25" stroke="currentColor" stroke-width="1.9"' +
+  ' stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 function card(rel, item, ri, ii) {
   const d = el("div", "card" + (item.done ? " done" : ""));
   d.dataset.release = ri;
@@ -1789,7 +1825,8 @@ function card(rel, item, ri, ii) {
   }
   d.appendChild(body);
 
-  const caret = el("button", "caret", open ? "▾" : "▸");
+  const caret = el("button", "caret");
+  caret.innerHTML = CHEVRON;
   caret.title = open ? "Close" : "Open — the full request and the notes";
   caret.setAttribute("aria-label", caret.title);
   caret.setAttribute("aria-expanded", String(open));
