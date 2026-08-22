@@ -554,7 +554,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v14 · 2026-08-22";
+const VERSION = "v15 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -1625,11 +1625,20 @@ function rewriteReferences(renames) {
 
 /* Renumber, move the references with it, and say what happened -- a number
    changing by itself is alarming unless something admits to doing it. */
+/* **A renumbering is not a replan**, and it takes one line to keep that true.
+   `rewriteReferences` edits item bodies -- "moved here from R2.1" becomes
+   "moved here from R3.0" -- which moves the plan digest and would flip a
+   planned column to *Replan* for a change nobody made. It has already happened
+   once: four releases came back from a drag asking to be re-planned, and the
+   only thing that had changed inside them was a release number the tool itself
+   had rewritten. So a column that was *Plan* going in is *Plan* coming out. */
 function reflow() {
+  const wasPlanned = DATA.releases.filter(r => planState(r) === "plan");
   const renames = renumber();
   const moved = Object.keys(renames).length;
   if (!moved) return;
   const refs = rewriteReferences(renames);
+  wasPlanned.forEach(r => { r.planned = planSignature(r); });
   const first = Object.entries(renames)[0];
   say(moved === 1
     ? `${first[0]} is now ${first[1]}` + (refs ? `, and ${refs} mention${refs > 1 ? "s" : ""} of it` : "")
