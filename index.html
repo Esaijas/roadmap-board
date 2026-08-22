@@ -591,7 +591,18 @@ async function pull({ quiet = false } = {}) {
     say("cannot load — " + whyBlocked(e), true); return;
   }
   if (res.status === 404) { return explain404(); }
-  if (res.status === 401 || res.status === 403) {
+  /* **401 and 403 are different failures and used to share a sentence.** 401
+     is "Bad credentials" -- GitHub does not recognise the string at all, which
+     is what a *regenerated* token leaves behind, because regenerating replaces
+     the value and the browser is still holding the old one. Sending somebody
+     to check a permission at that moment sends them to the one place the
+     answer is not. 403 is the token being real and refused anyway. */
+  if (res.status === 401) {
+    say("that token is not valid — regenerating one replaces its value, so "
+      + "paste the current string." + await detail(res), true);
+    return;
+  }
+  if (res.status === 403) {
     say("the token was refused — check it has Contents access to this repo."
       + await detail(res), true);
     return;
@@ -676,7 +687,11 @@ async function push() {
       + "never a missing file." + await detail(res), true);
     return;
   }
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401) {
+    say("not saved — that token is not valid. Regenerating one replaces its "
+      + "value; paste the current string." + await detail(res), true); return;
+  }
+  if (res.status === 403) {
     say("not saved — the token was refused." + await detail(res), true); return;
   }
   if (!res.ok) {
