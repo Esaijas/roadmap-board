@@ -44,8 +44,6 @@
   --line: #dfe2e6;
   --line2: #c8cdd4;
   --accent: #2f6feb;
-  --cut: #b0560c;
-  --cut-bg: #fdf3e7;
   --done: #1a7f4b;
   --danger: #c0392b;
   --drop: #e8f0fe;
@@ -55,7 +53,7 @@
     --bg: #14161a; --column: #1b1e23; --card: #23262c;
     --ink: #e7e9ec; --ink2: #9aa2ad; --ink3: #6f7883;
     --line: #2d3138; --line2: #3b4048;
-    --accent: #5b8def; --cut: #e0a267; --cut-bg: #2c2317;
+    --accent: #5b8def;
     --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
   }
 }
@@ -63,7 +61,7 @@
   --bg: #14161a; --column: #1b1e23; --card: #23262c;
   --ink: #e7e9ec; --ink2: #9aa2ad; --ink3: #6f7883;
   --line: #2d3138; --line2: #3b4048;
-  --accent: #5b8def; --cut: #e0a267; --cut-bg: #2c2317;
+  --accent: #5b8def;
   --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
 }
 
@@ -347,7 +345,6 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
   padding: 8px 8px 8px 6px; margin-bottom: 6px; font-size: 13px;
 }
 .card.dragging { opacity: .35; }
-.card.cut { border-left: 3px solid var(--cut); }
 .card.done .ctitle { color: var(--ink3); text-decoration: line-through; }
 .grip {
   flex: 0 0 auto; width: 12px; color: var(--ink3); cursor: grab;
@@ -359,7 +356,6 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 }
 .cardbody { flex: 1; min-width: 0; }
 .ctitle { cursor: text; }
-.cflags { margin-top: 5px; font-size: 11px; color: var(--cut); }
 .cbody {
   margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line);
   font-size: 12.5px; color: var(--ink2); white-space: pre-wrap;
@@ -544,7 +540,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v10 · 2026-08-22";
+const VERSION = "v12 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -1310,7 +1306,7 @@ function column(rel, ri) {
   rel.items.forEach((item, ii) => cards.appendChild(card(rel, item, ri, ii)));
   const add = el("button", "add", "+ item");
   add.onclick = () => {
-    rel.items.push({ title: "New item", body: "", cutLine: false, done: false });
+    rel.items.push({ title: "New item", body: "", done: false });
     touched(); render();
   };
   cards.appendChild(add);
@@ -1319,8 +1315,7 @@ function column(rel, ri) {
 }
 
 function card(rel, item, ri, ii) {
-  const d = el("div", "card"
-    + (item.cutLine ? " cut" : "") + (item.done ? " done" : ""));
+  const d = el("div", "card" + (item.done ? " done" : ""));
   d.dataset.release = ri;
   d.dataset.item = ii;
 
@@ -1345,7 +1340,6 @@ function card(rel, item, ri, ii) {
   });
   body.appendChild(editable(title, v => { item.title = v; }));
 
-  if (item.cutLine) body.appendChild(el("div", "cflags", "✂ cut line"));
   if (openCards.has(key)) {
     body.appendChild(editable(el("div", "cbody", item.body || "— no note —"),
       v => { item.body = v; }));
@@ -1428,12 +1422,20 @@ function el(tag, cls, text) {
 
    A project whose releases are called Spring and Summer parses as no major and
    no minor, so nothing is renumbered and the tool stays out of the way. */
-const ID_RE = /^([A-Za-z]*)(\d+)\.(\d+)$/;
+/* **A missing minor is a major being opened, not an id that failed to parse.**
+   Somebody who wants a new major types `R4`, not `R4.0` -- and the rule that
+   leaves unparseable ids alone, which exists so a project with releases called
+   Spring is never mangled, swallowed it instead. `R4` sat between two R3s and
+   was never renumbered.
+
+   So the minor is optional and absent reads as 0, which is exactly what opens
+   a major everywhere else in this file. */
+const ID_RE = /^([A-Za-z]*)(\d+)(?:\.(\d+))?$/;
 
 function parseId(id) {
   const m = ID_RE.exec((id || "").trim());
   if (!m) return null;
-  return { prefix: m[1], major: parseInt(m[2], 10), minor: m[3] };
+  return { prefix: m[1], major: parseInt(m[2], 10), minor: m[3] ?? "0" };
 }
 
 function renumber() {
