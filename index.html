@@ -108,6 +108,19 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button:disabled { opacity: .5; cursor: default; }
 
+/* **A glyph among words is a guess among answers.** Two of the four buttons up
+   here say what they do and two were a gear and an arrow at body-text size,
+   which is neither large enough to read as an icon nor labelled enough to read
+   as a word. The mark grows, and the word joins it wherever there is room --
+   at a phone's width the word goes and the glyph keeps the size it needed all
+   along. `title` carries it either way. */
+button.glyph {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 17px; line-height: 1; padding: 4px 10px;
+}
+button.glyph .also { font-size: 13px; }
+@media (max-width: 760px) { button.glyph .also { display: none; } }
+
 /* ── the two sheets ───────────────────────────────────────────────────── */
 
 .sheet {
@@ -150,6 +163,18 @@ button:disabled { opacity: .5; cursor: default; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
 }
 .sheetrow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+
+/* **A field you cannot read back is a field you cannot check.** A pasted
+   credential that is silently short looks exactly like a correct one, and the
+   only way to tell used to be a browser console -- which is a debugger, on a
+   machine that may not have one, for a question as ordinary as "did the whole
+   thing paste". The count is always visible; the characters are behind a
+   press, because most of the time this sheet is open in front of somebody. */
+.tokenrow { display: flex; gap: 6px; align-items: stretch; }
+.tokenrow input { flex: 1; min-width: 0; }
+.tokenrow button { flex: 0 0 auto; font-size: 12px; padding: 0 9px; }
+#tokenLen { white-space: nowrap; }
+#tokenLen[data-off] { color: var(--danger); }
 
 /* Selectable, and scrolls rather than stretching the sheet: it is the fallback
    for a page that may save no file and reach no clipboard. */
@@ -363,8 +388,12 @@ textarea { font-size: 12.5px; }
   <span class="project" id="title"></span>
   <span class="status" id="status"></span>
   <span class="spacer"></span>
-  <button id="refresh" title="Check the repository now">&#8635;</button>
-  <button id="gear" title="Project and token">&#9881;</button>
+  <button class="glyph" id="refresh" title="Check the repository now">
+    <span aria-hidden="true">&#8635;</span><span class="also">Refresh</span>
+  </button>
+  <button class="glyph" id="gear" title="Project and token">
+    <span aria-hidden="true">&#9881;</span><span class="also">Settings</span>
+  </button>
   <button id="theme">Theme</button>
   <button class="primary" id="save" title="Save now, without waiting">Save</button>
 </header>
@@ -416,10 +445,13 @@ textarea { font-size: 12.5px; }
         build. Drop that if your project wants saves to trigger something.</span>
     </label>
     <label>Token
-      <input id="f_token" type="password" autocomplete="off" spellcheck="false"
-        placeholder="github_pat_…">
+      <span class="tokenrow">
+        <input id="f_token" type="password" autocomplete="off" spellcheck="false"
+          placeholder="github_pat_…">
+        <button type="button" id="showToken" title="Show or hide the token">show</button>
+      </span>
       <span class="fine">Fine-grained, this repository only, Contents: read and write.
-        Kept in this browser.</span>
+        Kept in this browser. <span id="tokenLen"></span></span>
     </label>
     <div class="sheetrow">
       <button id="saveConfig">Save a config file</button>
@@ -850,10 +882,36 @@ const fields = ["owner", "repo", "branch", "path", "message", "token"];
 
 function openSettings() {
   fields.forEach(f => { document.getElementById("f_" + f).value = cfg[f] || ""; });
+  countToken();
   panel.hidden = false;
   document.getElementById("firstrun").hidden = true;
   document.getElementById("f_owner").focus();
 }
+/* The count answers the question this sheet cannot otherwise be asked: a
+   fine-grained token is 93 characters, and the failure that looks most like a
+   permission problem is a copy that stopped short. GitHub shows the value once,
+   at generation; go back afterwards and it displays an abbreviation, which
+   pastes cleanly and is refused as "Bad credentials". */
+const TOKEN_LENGTH = 93;
+const tokenBox = document.getElementById("f_token");
+const tokenLen = document.getElementById("tokenLen");
+
+function countToken() {
+  const n = tokenBox.value.trim().length;
+  if (!n) { tokenLen.textContent = ""; tokenLen.removeAttribute("data-off"); return; }
+  tokenLen.textContent = `${n} characters`
+    + (n === TOKEN_LENGTH ? "" : ` — a fine-grained one is ${TOKEN_LENGTH}`);
+  if (n === TOKEN_LENGTH) tokenLen.removeAttribute("data-off");
+  else tokenLen.setAttribute("data-off", "");
+}
+tokenBox.addEventListener("input", countToken);
+
+document.getElementById("showToken").onclick = () => {
+  const shown = tokenBox.type === "text";
+  tokenBox.type = shown ? "password" : "text";
+  document.getElementById("showToken").textContent = shown ? "show" : "hide";
+};
+
 document.getElementById("gear").onclick = openSettings;
 document.getElementById("startSetup").onclick = openSettings;
 document.getElementById("cancelSettings").onclick = () => { panel.hidden = true; };
