@@ -384,10 +384,31 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 }
 .cardbody { flex: 1; min-width: 0; }
 .ctitle { cursor: text; }
+
+/* **The handle and the requirement are two different pieces of text.** A card
+   shows a short one so a column can be read at a glance; opening it shows the
+   sentence the ticket was written in, whole. Neither replaces the other -- a
+   headline on its own is a reminder for somebody who already knows what it
+   meant, and a column of paragraphs cannot be scanned.
+
+   `pre-wrap`, because a ticket written as four bulleted options is four
+   options: collapsing its line breaks would be the same loss by another
+   route. */
+.cfull {
+  margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line);
+  font-size: 12.5px; color: var(--ink); white-space: pre-wrap; cursor: text;
+}
 .cbody {
   margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line);
   font-size: 12.5px; color: var(--ink2); white-space: pre-wrap;
 }
+/* One click, and it says which way it is going. Double-clicking the title
+   still works -- it was the only way before this and fingers remember. */
+.caret {
+  flex: 0 0 auto; border: none; background: none; color: var(--ink3);
+  font-size: 11px; line-height: 1; padding: 2px 3px; cursor: pointer;
+}
+.caret:hover { color: var(--ink); }
 
 .add {
   width: 100%; text-align: left; color: var(--ink3);
@@ -568,7 +589,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v16 · 2026-08-22";
+const VERSION = "v17 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -1449,18 +1470,38 @@ function card(rel, item, ri, ii) {
 
   const body = el("div", "cardbody");
   const key = ri + ":" + ii;
-  const title = el("div", "ctitle", item.title);
-  title.addEventListener("dblclick", () => {
-    openCards.has(key) ? openCards.delete(key) : openCards.add(key);
+  const open = openCards.has(key);
+  const toggle = () => {
+    open ? openCards.delete(key) : openCards.add(key);
     render();
-  });
-  body.appendChild(editable(title, v => { item.title = v; }));
+  };
 
-  if (openCards.has(key)) {
+  /* `short` is optional and a ticket without one behaves exactly as before:
+     its own sentence is the line on the card. So the top line edits whichever
+     field it is actually showing -- what you see is what you change. */
+  const hasShort = typeof item.short === "string" && item.short.length > 0;
+  const title = el("div", "ctitle", hasShort ? item.short : item.title);
+  title.addEventListener("dblclick", toggle);
+  body.appendChild(editable(
+    title,
+    hasShort ? (v => { item.short = v; }) : (v => { item.title = v; })));
+
+  if (open) {
+    // The sentence it was written in, only when a shorter one is standing in
+    // front of it -- otherwise this would print the same text twice.
+    if (hasShort) {
+      body.appendChild(editable(el("div", "cfull", item.title),
+        v => { item.title = v; }));
+    }
     body.appendChild(editable(el("div", "cbody", item.body || "— no note —"),
       v => { item.body = v; }));
   }
   d.appendChild(body);
+
+  const caret = el("button", "caret", open ? "▾" : "▸");
+  caret.title = open ? "Close" : "Open — the full request and the notes";
+  caret.onclick = e => { e.stopPropagation(); toggle(); };
+  d.appendChild(caret);
 
   const kill = el("button", "kill", "×");
   kill.title = "Delete this item";
