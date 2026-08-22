@@ -237,6 +237,54 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 }
 .column.dragging { opacity: .4; }
 
+/* ── which columns belong together ─────────────────────────────────────── */
+
+/* **A hue per major, and a fainter wash the further into that major a release
+   sits.** The board is read sideways and a major is nine columns wide by R6;
+   nothing but the id said where one run ended and the next began, so finding
+   *the R6 releases* meant reading nine ids one at a time.
+
+   Deliberately slight, and it carries no meaning of its own beyond *these
+   belong together* -- a tint strong enough to name is a tint strong enough to
+   argue with, and this is a plan rather than a chart. The hue comes from
+   position exactly as the numbering does, so a column dragged into another
+   major changes colour along with its id instead of keeping a stale one.
+
+   Composited as a background *image* over the column's own background colour:
+   one flat translucent layer, no `color-mix`, and the column keeps working
+   with the tint switched off. */
+:root {
+  --tint-s: 68%; --tint-l: 46%;
+  --tint-col: .055;                 /* the body of the column */
+  --tint-row: .14;                  /* the sticky id row, where the eye lands */
+  --tint-ink: 34%;                  /* the id itself */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --tint-s: 56%; --tint-l: 60%;
+    --tint-col: .075; --tint-row: .17; --tint-ink: 66%;
+  }
+}
+:root[data-theme="dark"] {
+  --tint-s: 56%; --tint-l: 60%;
+  --tint-col: .075; --tint-row: .17; --tint-ink: 66%;
+}
+
+.column.tinted {
+  --wash: hsl(var(--hue) var(--tint-s) var(--tint-l) /
+              calc(var(--tint-col) * var(--tintmul)));
+  background-image: linear-gradient(var(--wash), var(--wash));
+}
+.column.tinted > .crow {
+  --wash: hsl(var(--hue) var(--tint-s) var(--tint-l) /
+              calc(var(--tint-row) * var(--tintmul)));
+  background-image: linear-gradient(var(--wash), var(--wash));
+}
+/* The id keeps its major's hue at full strength however deep the minor is, so
+   the run is still readable where the wash has faded to almost nothing. */
+.column.tinted > .crow > .cid { color: hsl(var(--hue) var(--tint-s) var(--tint-ink)); }
+.column.tinted > .crow > .cid:hover { color: var(--ink); }
+
 /* ── the shipped rail ─────────────────────────────────────────────────── */
 
 /* Finished releases are a list beside the board, not columns in it. **A plan
@@ -411,12 +459,33 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
   font-size: 12.5px; color: var(--ink2); white-space: pre-wrap;
 }
 /* One click, and it says which way it is going. Double-clicking the title
-   still works -- it was the only way before this and fingers remember. */
+   still works -- it was the only way before this and fingers remember.
+
+   **It was an 11 px glyph with no box round it**, which is the size of a
+   decoration rather than of a button -- so the thing that opens a card read as
+   punctuation beside the title and went unpressed. Reported as not knowing
+   what it does, which is the honest reading: nothing about it said it was a
+   control.
+
+   So it takes a hit area of its own -- 22 square, which is the smallest thing
+   worth aiming a thumb at -- and the glyph grows with it. Nothing else moves:
+   it is still `flex: 0 0 auto` in the same row, and the extra height sits
+   inside the card's existing padding.
+
+   **The border is there before the pointer is**, for the reason `.add` below
+   already gives: there is no hover on a phone, and an affordance that only
+   exists under a mouse does not exist on the device this is most read from.
+   Faint enough that a column of eight cards does not become a column of eight
+   boxes, and it firms up under the pointer. */
 .caret {
-  flex: 0 0 auto; border: none; background: none; color: var(--ink3);
-  font-size: 11px; line-height: 1; padding: 2px 3px; cursor: pointer;
+  flex: 0 0 auto; width: 22px; height: 22px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 5px;
+  background: none; color: var(--ink3);
+  font-size: 13px; line-height: 1; cursor: pointer;
 }
-.caret:hover { color: var(--ink); }
+.caret:hover { color: var(--ink); border-color: var(--ink3); background: var(--column); }
+.caret:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .add {
   width: 100%; text-align: left; color: var(--ink3);
@@ -623,7 +692,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v19 · 2026-08-22";
+const VERSION = "v20 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -1542,6 +1611,32 @@ function planState(rel) {
   return rel.planned === planSignature(rel) ? "plan" : "replan";
 }
 
+/* Seven hues, taken by major number rather than by column position, so a
+   column keeps its colour while its neighbours are dragged about and only
+   changes when it changes major. They wrap, which is fine at this length: a
+   board would need eight majors on screen at once for two of them to meet,
+   and by then the ids are doing the work anyway.
+
+   Nothing red, and nothing in the green the shipped ticks are drawn in. Both
+   are already spoken for on this board -- `--danger` on the delete, `--done`
+   on the ticks -- and a column tinted with either would be making a claim
+   about its state rather than about its neighbours. */
+const TINT_HUES = [212, 268, 32, 322, 190, 246, 88];
+
+/* The wash fades through a major's minors, and never to nothing: 1, .82, .69,
+   .60 ... so `.0` opens the run at full strength and R6.8 is still tinted
+   enough to read as part of it. The minor *is* the depth -- `renumber` makes
+   them run 0, 1, 2 in board order -- so this needs no counting. */
+function tintOf(rel) {
+  const id = parseId(rel.id);
+  if (!id) return null;                          // Spring, Summer, Autumn
+  const depth = Math.max(0, parseInt(id.minor, 10) || 0);
+  return {
+    hue: TINT_HUES[((id.major % TINT_HUES.length) + TINT_HUES.length) % TINT_HUES.length],
+    mul: 1 / (1 + depth * 0.22),
+  };
+}
+
 function column(rel, ri) {
   const c = el("div", "column");
   c.dataset.release = ri;
@@ -1549,6 +1644,12 @@ function column(rel, ri) {
   const own = colWidths[rel.id];
   if (own) c.style.flexBasis = own + "px";
   if (open.has(rel.id)) c.classList.add("open");
+  const tint = tintOf(rel);
+  if (tint) {
+    c.classList.add("tinted");
+    c.style.setProperty("--hue", tint.hue);
+    c.style.setProperty("--tintmul", tint.mul.toFixed(3));
+  }
 
   /* The id row is a child of the *column*, not of the head. Sticky only holds
      inside its own parent's box, and the head scrolls away in one screenful --
@@ -1688,6 +1789,8 @@ function card(rel, item, ri, ii) {
 
   const caret = el("button", "caret", open ? "▾" : "▸");
   caret.title = open ? "Close" : "Open — the full request and the notes";
+  caret.setAttribute("aria-label", caret.title);
+  caret.setAttribute("aria-expanded", String(open));
   caret.onclick = e => { e.stopPropagation(); toggle(); };
   d.appendChild(caret);
 
