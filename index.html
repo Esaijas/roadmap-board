@@ -48,6 +48,12 @@
   --done: #1a7f4b;
   --danger: #c0392b;
   --drop: #e8f0fe;
+
+  /* Set on :root by the width control, and kept in this browser rather than in
+     the plan: how wide a column reads is a fact about the screen in front of
+     somebody, not about the project. Two people on one board want different
+     answers and neither is wrong. */
+  --colw: 292px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -98,6 +104,8 @@ h1 { font-size: 15px; font-weight: 600; margin: 0; }
 .project:empty { display: none; }
 
 #version { font-variant-numeric: tabular-nums; }
+#widthOut { font-variant-numeric: tabular-nums; min-width: 4.5em; }
+#f_width { flex: 1; min-width: 120px; accent-color: var(--accent); }
 .status { color: var(--ink3); font-size: 12px; }
 .spacer { flex: 1; }
 button {
@@ -222,7 +230,7 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
    a long release and leaving its reasoning pinned above turns the argument
    into furniture. So one scroller, and the whole thing moves. */
 .column {
-  flex: 0 0 292px; max-height: 100%; display: flex; flex-direction: column;
+  flex: 0 0 var(--colw); max-height: 100%; display: flex; flex-direction: column;
   background: var(--column); border: 1px solid var(--line);
   border-radius: 8px; margin: 0 2px;
   overflow-y: auto; scrollbar-width: thin;
@@ -522,6 +530,16 @@ textarea { font-size: 12.5px; }
       <button id="saveConfig">Save a config file</button>
       <span class="fine">for the project above, without the token</span>
     </div>
+    <label class="field">
+      <span>Column width</span>
+      <span class="row">
+        <input id="f_width" type="range" min="240" max="620" step="4">
+        <span class="fine" id="widthOut"></span>
+        <button type="button" id="resetWidth" title="Back to 292 px">reset</button>
+      </span>
+      <span class="fine">Applies as you drag, and stays on this device. A ticket
+        written as a paragraph reads at a width a card cannot guess.</span>
+    </label>
     <div class="sheetrow">
       <span class="fine" id="version"></span>
       <button id="copyVersion" title="Copy the version to the clipboard">copy</button>
@@ -589,7 +607,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v17 · 2026-08-22";
+const VERSION = "v18 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -978,6 +996,48 @@ function openSettings() {
    pastes cleanly and is refused as "Bad credentials". */
 const TOKEN_LENGTH = 93;
 document.getElementById("version").textContent = "Pure planner " + VERSION;
+
+/* ── how wide a column is ──────────────────────────────────────────────────
+   **Kept out of `roadmap.json` on purpose.** Column width is a fact about the
+   screen somebody is reading on, not about the plan: a laptop and a wide
+   monitor want different answers, two people on one board want different
+   answers, and a value that travelled in the file would have one of them
+   fighting the other through the commit log.
+
+   So it lives beside the token, in this browser -- which is also why it is
+   applied straight to `:root` rather than being handed to `render()`. Nothing
+   redraws; the columns are already reading the token. */
+const WIDTH_KEY = "roadmap.width.v1";
+const WIDTH_DEFAULT = 292;
+const widthField = document.getElementById("f_width");
+const widthOut = document.getElementById("widthOut");
+
+function readWidth() {
+  try {
+    const n = parseInt(localStorage.getItem(WIDTH_KEY) || "", 10);
+    return Number.isFinite(n) ? clampWidth(n) : WIDTH_DEFAULT;
+  } catch { return WIDTH_DEFAULT; }        // storage off: the default, not a throw
+}
+
+function clampWidth(n) {
+  return Math.max(+widthField.min, Math.min(+widthField.max, n));
+}
+
+function applyWidth(px, remember) {
+  const n = clampWidth(px);
+  document.documentElement.style.setProperty("--colw", n + "px");
+  widthField.value = n;
+  widthOut.textContent = n + " px";
+  if (remember) {
+    try { localStorage.setItem(WIDTH_KEY, String(n)); }
+    catch { remembers = false; }           // same admission the token makes
+  }
+}
+
+widthField.oninput = e => applyWidth(+e.currentTarget.value, false);
+widthField.onchange = e => applyWidth(+e.currentTarget.value, true);
+document.getElementById("resetWidth").onclick = () => applyWidth(WIDTH_DEFAULT, true);
+applyWidth(readWidth(), false);
 
 /* It is quoted back to me when something is wrong, so it wants to travel in
    one press rather than by being read off a screen and retyped. The button
