@@ -426,13 +426,26 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 /* Faintly visible rather than hover-only. **There is no hover on a phone**,
    and an affordance that only exists under a mouse does not exist on the
    device this is most used from. */
+/* **The gap does two jobs and the pointer tells them apart.** Click it and a
+   release goes in here; drag it sideways and the column on its left changes
+   width. A press that never moved is a click, so neither gesture has to be
+   given its own strip of screen -- there is not room for two. */
 .gap {
   flex: 0 0 20px; align-self: stretch; display: flex;
   align-items: flex-start; justify-content: center; padding-top: 14px;
-  color: var(--line2); cursor: pointer; user-select: none;
-  font-size: 17px; line-height: 1;
+  color: var(--line2); user-select: none; touch-action: none;
+  font-size: 17px; line-height: 1; position: relative;
+  cursor: pointer;
 }
+.gap.grip { cursor: col-resize; }
 .gap:hover { color: var(--accent); }
+/* The line only appears under the pointer, so the board is not a ladder of
+   rules when nobody is resizing anything. */
+.gap.grip:hover::after, .gap.sizing::after {
+  content: ""; position: absolute; top: 6px; bottom: 6px; width: 2px;
+  background: var(--accent); border-radius: 1px; opacity: .55;
+}
+.gap.sizing::after { opacity: 1; }
 
 .dropline { background: var(--drop); border-radius: 3px; }
 
@@ -535,10 +548,13 @@ textarea { font-size: 12.5px; }
       <span class="row">
         <input id="f_width" type="range" min="240" max="620" step="4">
         <span class="fine" id="widthOut"></span>
-        <button type="button" id="resetWidth" title="Back to 292 px">reset</button>
+        <button type="button" id="resetWidth"
+          title="Back to 292 px, and drop any width a column was given by hand">reset</button>
       </span>
-      <span class="fine">Applies as you drag, and stays on this device. A ticket
-        written as a paragraph reads at a width a card cannot guess.</span>
+      <span class="fine">The width every column starts at. Applies as you drag,
+        and stays on this device. <strong>Drag the space between two columns</strong>
+        to give the one on its left a width of its own; <em>reset</em> puts them
+        all back.</span>
     </label>
     <div class="sheetrow">
       <span class="fine" id="version"></span>
@@ -607,7 +623,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v18 · 2026-08-22";
+const VERSION = "v19 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -1036,8 +1052,65 @@ function applyWidth(px, remember) {
 
 widthField.oninput = e => applyWidth(+e.currentTarget.value, false);
 widthField.onchange = e => applyWidth(+e.currentTarget.value, true);
-document.getElementById("resetWidth").onclick = () => applyWidth(WIDTH_DEFAULT, true);
+document.getElementById("resetWidth").onclick = () => {
+  colWidths = {};                          // the slider is the default for all
+  saveColWidths();
+  applyWidth(WIDTH_DEFAULT, true);
+  render();
+};
 applyWidth(readWidth(), false);
+
+/* ── and a column that wants its own width ─────────────────────────────────
+   The slider above sets the default. Dragging the handle between two columns
+   gives the one on its left a width of its own, which then ignores the
+   default; double-clicking that handle hands it back.
+
+   Keyed by release id, and the honest limit of that is worth stating: ids move
+   when columns are dragged, so a width follows the *number* rather than the
+   release. There is nothing more stable to key on -- the format has no item or
+   release ids by design -- and a board being reshuffled is a board whose
+   widths were about to be redrawn anyway.
+
+   Same place as the default, for the same reason: this is about the screen in
+   front of somebody, not about the plan. */
+const COLW_KEY = "roadmap.colw.v1";
+
+function readColWidths() {
+  try {
+    const v = JSON.parse(localStorage.getItem(COLW_KEY) || "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch { return {}; }
+}
+let colWidths = readColWidths();
+
+function saveColWidths() {
+  try { localStorage.setItem(COLW_KEY, JSON.stringify(colWidths)); }
+  catch { remembers = false; }
+}
+
+/** What a release is drawn at now: its own width, or the default. */
+function widthOf(rel) {
+  return colWidths[rel.id] || clampWidth(parseInt(
+    getComputedStyle(document.documentElement).getPropertyValue("--colw"), 10));
+}
+
+/**
+ * Set one column's width, or clear it with null.
+ *
+ * The live half writes straight to the element rather than re-rendering: a
+ * drag at sixty frames a second must not rebuild the board sixty times, and
+ * every open editor in it would be thrown away if it did.
+ */
+function setColumnWidth(id, px, remember) {
+  if (px === null) delete colWidths[id];
+  else colWidths[id] = clampWidth(px);
+  const node = board.querySelector(`.column[data-id="${CSS.escape(id)}"]`);
+  if (node) node.style.flexBasis = px === null ? "" : colWidths[id] + "px";
+  if (remember) { saveColWidths(); touchedNothing(); }
+}
+
+/** Nothing to save to GitHub — this is a view setting. Named so it reads. */
+function touchedNothing() { /* deliberately empty */ }
 
 /* It is quoted back to me when something is wrong, so it wants to travel in
    one press rather than by being read off a screen and retyped. The button
@@ -1327,12 +1400,14 @@ function render() {
   board.textContent = "";
   // Only what is ahead is a column. Shipped releases are the rail, which is
   // why no inserter appears among them -- a release cannot go into the past.
+  let left = null;                       // the release a gap can resize
   DATA.releases.forEach((rel, ri) => {
     if (rel.shipped) return;
-    board.appendChild(gap(ri));
+    board.appendChild(gap(ri, left));
     board.appendChild(column(rel, ri));
+    left = rel;
   });
-  board.appendChild(gap(DATA.releases.length));
+  board.appendChild(gap(DATA.releases.length, left));
   renderShipped();
 
   board.querySelectorAll(".column").forEach(c => {
@@ -1365,11 +1440,61 @@ function renderShipped() {
 /* The index rides on the element. It used to be derived by counting gaps,
    which was correct only while there was one gap per release -- and stopped
    being true the moment gaps between shipped releases were suppressed. */
-function gap(index) {
+function gap(index, left) {
   const g = el("div", "gap", "+");
   g.dataset.at = index;
-  g.title = "Insert a release here";
-  g.onclick = () => insertRelease(index);
+  if (!left) {
+    // Nothing to the left of the first gap, so it is only an inserter.
+    g.title = "Insert a release here";
+    g.onclick = () => insertRelease(index);
+    return g;
+  }
+  g.classList.add("grip");
+  g.title = `Drag sideways to resize ${left.id} · `
+    + "click to insert a release here";
+
+  let from = null;
+  g.addEventListener("pointerdown", e => {
+    if (e.button !== undefined && e.button !== 0) return;
+    from = { x: e.clientX, w: widthOf(left), moved: false };
+    g.setPointerCapture(e.pointerId);
+    g.classList.add("sizing");
+    /* **No `preventDefault` here.** On `pointerdown` it suppresses the
+       compatibility mouse events, and with them the `click` that inserts a
+       release and the `dblclick` that resets the width — the same way it once
+       stopped the release id opening its editor. It goes in `pointermove`
+       instead, where a drag is actually under way and text selection is the
+       thing worth stopping. */
+  });
+  g.addEventListener("pointermove", e => {
+    if (!from) return;
+    const d = e.clientX - from.x;
+    if (!from.moved && Math.abs(d) < 3) return;   // a hand is never quite still
+    from.moved = true;
+    e.preventDefault();
+    setColumnWidth(left.id, from.w + d, false);
+  });
+  const finish = () => {
+    if (!from) return;
+    g.classList.remove("sizing");
+    if (from.moved) setColumnWidth(left.id, widthOf(left), true);
+    // A press that moved is a resize and must not also insert a release. The
+    // click arrives after this, so the flag has to outlive the pointer.
+    g.dataset.dragged = from.moved ? "1" : "";
+    from = null;
+  };
+  g.addEventListener("pointerup", finish);
+  g.addEventListener("pointercancel", finish);
+  /* **No double-click-to-reset here, and it was tried.** A double click fires
+     an ordinary click first, so it opened the New release dialog on the way
+     past — two gestures competing for one strip of screen, and the one that
+     wins is the one you did not mean. Resetting lives on the *reset* button in
+     Settings, which clears every column's own width and puts them all back on
+     the default. One place, no clash. */
+  g.onclick = () => {
+    if (g.dataset.dragged) { g.dataset.dragged = ""; return; }
+    insertRelease(index);
+  };
   return g;
 }
 
@@ -1420,6 +1545,9 @@ function planState(rel) {
 function column(rel, ri) {
   const c = el("div", "column");
   c.dataset.release = ri;
+  c.dataset.id = rel.id;
+  const own = colWidths[rel.id];
+  if (own) c.style.flexBasis = own + "px";
   if (open.has(rel.id)) c.classList.add("open");
 
   /* The id row is a child of the *column*, not of the head. Sticky only holds
