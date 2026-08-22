@@ -461,31 +461,33 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 /* One click, and it says which way it is going. Double-clicking the title
    still works -- it was the only way before this and fingers remember.
 
-   **It was an 11 px glyph with no box round it**, which is the size of a
-   decoration rather than of a button -- so the thing that opens a card read as
-   punctuation beside the title and went unpressed. Reported as not knowing
-   what it does, which is the honest reading: nothing about it said it was a
-   control.
+   **It was an 11 px glyph**, which is the size of a decoration rather than of
+   a control, so the thing that opens a card read as punctuation beside the
+   title and went unpressed. Reported as not knowing what it does.
 
-   So it takes a hit area of its own -- 22 square, which is the smallest thing
-   worth aiming a thumb at -- and the glyph grows with it. Nothing else moves:
-   it is still `flex: 0 0 auto` in the same row, and the extra height sits
+   **The answer is the size, not a box round it.** A bordered button was tried
+   and rejected on sight: a column is eight cards deep and a boxed control on
+   every one of them turns a list of sentences into a list of widgets, which is
+   a worse problem than the one being fixed. So the glyph grows to 15 and the
+   chrome stays away.
+
+   **The hit area is still 22 square** -- the smallest thing worth aiming a
+   thumb at -- and it is invisible, which is the point: a tap target costs
+   nothing to make generous and everything to draw. Nothing else moves either,
+   since this is still `flex: 0 0 auto` in the same row and the height sits
    inside the card's existing padding.
 
-   **The border is there before the pointer is**, for the reason `.add` below
-   already gives: there is no hover on a phone, and an affordance that only
-   exists under a mouse does not exist on the device this is most read from.
-   Faint enough that a column of eight cards does not become a column of eight
-   boxes, and it firms up under the pointer. */
+   Resting in `--ink2` rather than `--ink3`, because with no box the ink is the
+   only thing saying it is there, and `ink3` is the shade this file uses for
+   text that is deliberately receding. */
 .caret {
   flex: 0 0 auto; width: 22px; height: 22px; padding: 0;
   display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line); border-radius: 5px;
-  background: none; color: var(--ink3);
-  font-size: 13px; line-height: 1; cursor: pointer;
+  border: none; background: none; color: var(--ink2);
+  font-size: 15px; line-height: 1; cursor: pointer;
 }
-.caret:hover { color: var(--ink); border-color: var(--ink3); background: var(--column); }
-.caret:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.caret:hover { color: var(--ink); }
+.caret:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 
 .add {
   width: 100%; text-align: left; color: var(--ink3);
@@ -692,7 +694,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v20 · 2026-08-22";
+const VERSION = "v21 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
