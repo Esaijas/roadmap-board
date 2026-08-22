@@ -44,6 +44,7 @@
   --line: #dfe2e6;
   --line2: #c8cdd4;
   --accent: #2f6feb;
+  --warn: #b0560c;
   --done: #1a7f4b;
   --danger: #c0392b;
   --drop: #e8f0fe;
@@ -53,7 +54,7 @@
     --bg: #14161a; --column: #1b1e23; --card: #23262c;
     --ink: #e7e9ec; --ink2: #9aa2ad; --ink3: #6f7883;
     --line: #2d3138; --line2: #3b4048;
-    --accent: #5b8def;
+    --accent: #5b8def; --warn: #e0a267;
     --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
   }
 }
@@ -61,7 +62,7 @@
   --bg: #14161a; --column: #1b1e23; --card: #23262c;
   --ink: #e7e9ec; --ink2: #9aa2ad; --ink3: #6f7883;
   --line: #2d3138; --line2: #3b4048;
-  --accent: #5b8def;
+  --accent: #5b8def; --warn: #e0a267;
   --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
 }
 
@@ -337,6 +338,19 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 .cmeta { margin-top: 9px; font-size: 11.5px; color: var(--ink3); }
 .cmeta .prog { color: var(--done); }
 
+/* The plan state sits in the meta row rather than beside the id, because it is
+   a fact about the items and the meta row is already the items' line. It is a
+   button because it is the only way to set it -- there is no other surface. */
+.pstate {
+  font: inherit; font-size: 11.5px; padding: 0 5px; border-radius: 4px;
+  border: 1px solid currentColor; background: none; cursor: pointer;
+  vertical-align: baseline;
+}
+.pstate.new { color: var(--ink3); }
+.pstate.replan { color: var(--warn); }
+.pstate.plan { color: var(--done); }
+.pstate:hover { background: var(--card); }
+
 .cards { padding: 6px; flex: 0 0 auto; min-height: 30px; }
 
 .card {
@@ -540,7 +554,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v12 · 2026-08-22";
+const VERSION = "v14 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -1198,7 +1212,23 @@ document.getElementById("theme").onclick = () => {
 
 /* ── rendering ─────────────────────────────────────────────────────────── */
 
+/* **A rebuild that forgets where you were has moved the page under you.**
+   This throws the whole board away and builds it again, which is the right
+   shape for a tool with no framework -- but every column is its own scroller,
+   and a fresh element starts at the top. Adding a sixth item to a column of
+   twenty threw the view back to the first one, so the card just created was
+   off screen and the answer to "where did it go" was "scroll back down".
+
+   Offsets are keyed by the column's index, not its id: a reflow renames ids,
+   and the position on the board is what the eye was resting on anyway. */
 function render() {
+  const wasX = board.scrollLeft;
+  const rail = document.getElementById("raillist");
+  const wasRail = rail ? rail.scrollTop : 0;
+  const offsets = new Map();
+  board.querySelectorAll(".column").forEach(
+    c => offsets.set(c.dataset.release, c.scrollTop));
+
   board.textContent = "";
   // Only what is ahead is a column. Shipped releases are the rail, which is
   // why no inserter appears among them -- a release cannot go into the past.
@@ -1209,6 +1239,13 @@ function render() {
   });
   board.appendChild(gap(DATA.releases.length));
   renderShipped();
+
+  board.querySelectorAll(".column").forEach(c => {
+    const y = offsets.get(c.dataset.release);
+    if (y) c.scrollTop = y;
+  });
+  board.scrollLeft = wasX;
+  if (rail && wasRail) document.getElementById("raillist").scrollTop = wasRail;
 }
 
 function renderShipped() {
@@ -1239,6 +1276,50 @@ function gap(index) {
   g.title = "Insert a release here";
   g.onclick = () => insertRelease(index);
   return g;
+}
+
+/* **Is the implementation plan still the plan?** Three answers, and the column
+   says which:
+
+   - **New** -- no plan has been done yet.
+   - **Replan** -- a ticket has been added, changed or removed since the last
+     plan, so replanning is needed.
+   - **Plan** -- every ticket in the release is planned.
+
+   Telling *Plan* from *Replan* needs a record of what was planned, so stamping
+   one stores a digest of every item's title and body. Two things are
+   deliberately outside the digest. **Order is not in it**: dragging a card up
+   the same column is not a ticket changing. **`done` is not in it either**:
+   ticking items off is the plan being carried out, and a plan that went stale
+   the moment somebody made progress against it would be measuring the opposite
+   of what it claims to.
+
+   A hand-written file has no stamp and reads *New*, which is the honest answer
+   for a file nobody has planned against yet -- the digest is the tool's to
+   write, not something to compose in a text editor. */
+const PLAN_STATES = {
+  new:    ["New", "no plan yet — click when the tickets have one"],
+  replan: ["Replan", "tickets have changed since the plan — click to re-stamp"],
+  plan:   ["Plan", "every ticket is planned — click to clear"],
+};
+
+function planSignature(rel) {
+  const s = (rel.items || [])
+    .map(i => `${i.title || ""}\u0000${i.body || ""}`)
+    .sort()
+    .join("\u0001");
+  let h = 0x811c9dc5;                             // FNV-1a, 32 bit
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h = Math.imul(h ^ (c & 0xff), 0x01000193) >>> 0;
+    h = Math.imul(h ^ (c >>> 8), 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+function planState(rel) {
+  if (!rel.planned) return "new";
+  return rel.planned === planSignature(rel) ? "plan" : "replan";
 }
 
 function column(rel, ri) {
@@ -1297,6 +1378,20 @@ function column(rel, ri) {
   } else {
     meta.append(`${n} item${n === 1 ? "" : "s"}`);
   }
+  const state = planState(rel);
+  const chip = el("button", "pstate " + state, PLAN_STATES[state][0]);
+  chip.title = PLAN_STATES[state][1];
+  chip.onclick = e => {
+    e.stopPropagation();
+    /* Clicking a stamped column clears it, so a stamp made in error is undone
+       the same way it was made. `startDrag` already refuses a button, so this
+       does not have to fight the column's own pointerdown. */
+    if (state === "plan") delete rel.planned;
+    else rel.planned = planSignature(rel);
+    touched(); render();
+  };
+  meta.append(" · ");
+  meta.appendChild(chip);
   head.appendChild(meta);
 
   head.addEventListener("pointerdown", e => startDrag(e, c, "column", { ri }));
@@ -1308,6 +1403,13 @@ function column(rel, ri) {
   add.onclick = () => {
     rel.items.push({ title: "New item", body: "", done: false });
     touched(); render();
+    /* Holding the scroll still is most of it, but a column already scrolled to
+       its end grows by one card *below* the fold. `nearest` moves the column by
+       the least that shows it and leaves everything else where it was. */
+    const col = board.querySelector(`.column[data-release="${ri}"]`);
+    const cards = col ? col.querySelectorAll(".card") : [];
+    const last = cards[cards.length - 1];
+    if (last) last.scrollIntoView({ block: "nearest", inline: "nearest" });
   };
   cards.appendChild(add);
   c.appendChild(cards);
@@ -1446,10 +1548,12 @@ function renumber() {
      read as a decimal because that is what these ids are: 1.05 sits between
      1.0 and 1.1, which is the whole reason the old scheme could insert. */
   const shippedTop = {};
+  let lastShipped = null;
   parsed.forEach(({ rel, id }) => {
     if (!rel.shipped || !id) return;
     const v = parseFloat(`0.${id.minor}`);
     shippedTop[id.major] = Math.max(shippedTop[id.major] ?? -1, v);
+    lastShipped = Math.max(lastShipped ?? id.major, id.major);
   });
 
   const prefix = parsed.find(p => p.id)?.id.prefix ?? "";
@@ -1462,11 +1566,26 @@ function renumber() {
     next = top === undefined ? 0 : Math.floor(top) + 1;
   };
 
+  /* **The major follows position too, and that is the half this used to miss.**
+     A `.0` says a major opens here; *which* major it is comes from how many
+     have opened to its left, never from the digits typed on the column. Reading
+     the number off the column meant a major dragged leftwards carried its old
+     value with it while the one behind re-opened on the same number, and the
+     board drew two R4.0s -- a duplicate id, not merely a stale one.
+
+     The run has to clear the shipped history, because those ids are facts. A
+     project with nothing shipped keeps whatever its first column says, so a
+     board that opens at R1.0 is not dragged down to R0. */
   parsed.forEach(({ rel, id }) => {
-    if (!id) return;                              // leave anything unparseable
-    if (rel.shipped) { if (major === null) openMajor(id.major); major = id.major; return; }
-    if (major === null || id.major > major || Number(id.minor) === 0) {
-      if (major === null || id.major !== major) openMajor(id.major);
+    if (!id || rel.shipped) return;               // unparseable, or frozen
+    if (major === null) {
+      /* The leftmost unbuilt column. Ending `.0` it opens the major after the
+         shipped run; anything else is continuing the last shipped major, and
+         `openMajor` resumes it above its highest shipped minor. */
+      if (lastShipped === null) openMajor(id.major);
+      else openMajor(Number(id.minor) === 0 ? lastShipped + 1 : lastShipped);
+    } else if (Number(id.minor) === 0) {
+      openMajor(major + 1);
     }
     const want = `${prefix}${major}.${next++}`;
     if (want !== rel.id) { renames[rel.id] = want; rel.id = want; }
