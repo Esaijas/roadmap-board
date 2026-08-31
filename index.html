@@ -722,7 +722,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v23 · 2026-08-22";
+const VERSION = "v24 · 2026-08-22";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -1931,12 +1931,26 @@ function renumber() {
 
   /* A major already partly shipped resumes above its highest shipped minor,
      read as a decimal because that is what these ids are: 1.05 sits between
-     1.0 and 1.1, which is the whole reason the old scheme could insert. */
+     1.0 and 1.1, which is the whole reason the old scheme could insert.
+
+     **The first digit is the minor and the rest is the fraction**, which is
+     the one reading that fits every id this project has: `05` is 0.5 -- half
+     way between .0 and .1 -- and `85` is 8.5, between .8 and .9, which is
+     exactly where R0.85 sat. The obvious `0.${minor}` reading agrees on both
+     of those and quietly disagrees on every plain minor from 1 up: it makes
+     `1` into 0.1, whose floor is 0, so the next id offered after a shipped
+     R2.1 is *R2.1*. The board then draws two of them, one shipped and one
+     not -- the same duplicate-id failure as the two R4.0s below, arriving
+     through the other door.
+
+     It became reachable the day R2.1 shipped, in one click: inserting a column
+     after it proposes R2.2, and this is what decides what R2.2 becomes. */
   const shippedTop = {};
   let lastShipped = null;
   parsed.forEach(({ rel, id }) => {
     if (!rel.shipped || !id) return;
-    const v = parseFloat(`0.${id.minor}`);
+    const m = String(id.minor);
+    const v = parseFloat(m.length > 1 ? `${m[0]}.${m.slice(1)}` : m);
     shippedTop[id.major] = Math.max(shippedTop[id.major] ?? -1, v);
     lastShipped = Math.max(lastShipped ?? id.major, id.major);
   });
