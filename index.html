@@ -722,7 +722,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v24 · 2026-08-22";
+const VERSION = "v25 · 2026-08-31";
 
 const CONFIG_KEY = "roadmap.config.v1";
 const DEFAULTS = {
@@ -2001,9 +2001,40 @@ function renumber() {
    while B becomes C, and a sequential replace turns every A into C. Only whole
    ids that actually moved are matched, so an "R1" meaning the series survives
    and a version like 1.05.305 is not a release id at all. */
+/* **Two kinds of old id are refused rather than rewritten**, and the asymmetry
+   is the whole design: a mention left behind is stale and visible, a mention
+   moved to the wrong release is wrong and reads as deliberate. Both refusals
+   below were paid for.
+
+   **An id with no prefix is not a reference.** A column briefly carried the
+   bare id `5.0`, and renaming it rewrote a shipped ticket's sentence -- *"a
+   restored walk shows a 4.9 km line underneath a 5.0 km number"* -- into
+   *"a R5.0 km number"*. `ID_RE` allows an empty prefix, so `5.0` is a legal id
+   and every measurement in the board matching it is a false positive. There is
+   no way to tell them apart in prose, so bare ids simply do not carry their
+   references, and the id itself still moves.
+
+   **A number a shipped release already has is ambiguous, so it is left alone.**
+   This is the one that did real damage. Renaming an unshipped column off R4.1
+   makes `renames["R4.1"]`, and this function then replaces *every* R4.1 on the
+   board -- including the mentions that meant the shipped R4.1, which are facts
+   about a release document, a generated gate list and verdicts stored on a
+   phone. Fifteen fields went wrong in one click, and the worst of them inverted
+   a dependency: *"it cannot start until R4.2 has shipped"* became *"until R4.4
+   has shipped"*, which is the release that depends on it. A circle, stated as
+   confidently as the truth had been.
+
+   The mentions kept are the ones nobody can disambiguate; a person reading
+   "R4.1" in a body can, because they know which release they meant. */
 function rewriteReferences(renames) {
-  const olds = Object.keys(renames);
-  if (!olds.length) return 0;
+  const shipped = new Set(
+    DATA.releases.filter(r => r.shipped).map(r => String(r.id || "").trim()));
+
+  const olds = Object.keys(renames).filter(
+    id => /^[A-Za-z]/.test(id) && !shipped.has(id));
+  const held = Object.keys(renames).filter(id => !olds.includes(id));
+  if (!olds.length) return { moved: 0, held };
+
   const alt = olds.sort((a, b) => b.length - a.length)
                   .map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
   /* The lookahead has to refuse a digit but allow a full stop, because most
@@ -2019,7 +2050,7 @@ function rewriteReferences(renames) {
     r.gate = fix(r.gate);
     (r.items || []).forEach(i => { i.body = fix(i.body); i.title = fix(i.title); });
   });
-  return n;
+  return { moved: n, held };
 }
 
 /* Renumber, move the references with it, and say what happened -- a number
@@ -2036,12 +2067,19 @@ function reflow() {
   const renames = renumber();
   const moved = Object.keys(renames).length;
   if (!moved) return;
-  const refs = rewriteReferences(renames);
+  const { moved: refs, held } = rewriteReferences(renames);
   wasPlanned.forEach(r => { r.planned = planSignature(r); });
   const first = Object.entries(renames)[0];
-  say(moved === 1
+  /* **A reference this refuses to move has to be said out loud.** It is the
+     only part of a renumber somebody has to finish by hand, and a silent
+     refusal is a stale mention nobody knows to look for. */
+  const note = held.length
+    ? ` — mentions of ${held.join(" and ")} left as ${held.length > 1 ? "they are" : "it is"}, `
+      + `so check them by hand`
+    : "";
+  say((moved === 1
     ? `${first[0]} is now ${first[1]}` + (refs ? `, and ${refs} mention${refs > 1 ? "s" : ""} of it` : "")
-    : `renumbered ${moved} releases` + (refs ? `, and ${refs} mentions` : ""));
+    : `renumbered ${moved} releases` + (refs ? `, and ${refs} mentions` : "")) + note);
 }
 
 /* What the new column will be called, which reflow decides a moment later --
