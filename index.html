@@ -106,9 +106,15 @@ h1 { font-size: 15px; font-weight: 600; margin: 0; }
 #version { font-variant-numeric: tabular-nums; }
 .status { color: var(--ink3); font-size: 12px; }
 .spacer { flex: 1; }
+/* **Pill-shaped, and the padding moves with the radius.** A full round end on
+   a box with 10 px of side padding puts the first letter inside the curve, so
+   every label gains a little room as it gains the shape. 999 px rather than a
+   measured value: the radius is then always half the height, whatever the
+   button turns out to be, and a button that grows a second line stays a
+   stadium instead of turning back into a rectangle with rounded corners. */
 button {
   font: inherit; font-size: 13px; color: var(--ink); background: var(--card);
-  border: 1px solid var(--line2); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+  border: 1px solid var(--line2); border-radius: 999px; padding: 5px 13px; cursor: pointer;
 }
 button:hover { border-color: var(--ink3); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -159,7 +165,7 @@ button.glyph .also { font-size: 13px; }
 .sheetbox input {
   font: inherit; font-size: 13px; letter-spacing: normal; text-transform: none;
   color: var(--ink); background: var(--column);
-  border: 1px solid var(--line2); border-radius: 6px; padding: 7px 8px;
+  border: 1px solid var(--line2); border-radius: 999px; padding: 7px 14px;
 }
 .sheetbox input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .fine {
@@ -169,7 +175,13 @@ button.glyph .also { font-size: 13px; }
 .sheetbox code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
 }
-.sheetrow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+/* **A pill must not be allowed to shrink.** These rows are a button beside a
+   line of explanation, and flex gives the button its share of a squeeze -- at
+   which point a three-word label wraps to three lines and a stadium becomes a
+   blob. It never showed before because the padding was small enough to hide
+   it. The row wraps instead, which is the right thing to give way. */
+.sheetrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.sheetrow > button { flex: 0 0 auto; white-space: nowrap; }
 
 /* **A field you cannot read back is a field you cannot check.** A pasted
    credential that is silently short looks exactly like a correct one, and the
@@ -188,20 +200,43 @@ button.glyph .also { font-size: 13px; }
    under that name, and where it is not supported the field simply shows --
    which is the state the button offers anyway. Nothing is hidden that the
    press would not reveal. */
-.tokenrow { display: flex; gap: 6px; align-items: flex-start; }
+/* **The controls sit inside the box they act on.** Beside it they were two
+   more things in a column of things, and the one that clears a credential read
+   as just another button on the sheet. Inside, they belong to the field and
+   nothing else -- and the field is the only one here anybody presses twice.
+
+   They are along the bottom rather than the top because the text starts at the
+   top left: a 93-character token fills two of the three lines, so the bottom
+   strip is the part that is reliably empty. The padding underneath is what
+   reserves it, so a token long enough to reach the third line stops above them
+   instead of running underneath. `resize` is off for the same reason -- the
+   grip lived in that corner. */
+.tokenrow { position: relative; display: block; }
 .tokenrow textarea {
-  flex: 1; min-width: 0; resize: vertical;
+  display: block; width: 100%; resize: none;
   font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11.5px; line-height: 1.5; letter-spacing: normal; text-transform: none;
+  font-size: 11.5px; line-height: 1.55; letter-spacing: normal; text-transform: none;
   color: var(--ink); background: var(--column);
-  border: 1px solid var(--line2); border-radius: 6px; padding: 7px 8px;
+  border: 1px solid var(--line2); border-radius: 18px;
+  padding: 10px 15px 34px;
   overflow-wrap: anywhere; word-break: break-all;
 }
 .tokenrow textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #f_token.masked { -webkit-text-security: disc; }
-.tokenbtns { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
-.tokenbtns button { font-size: 12px; padding: 3px 9px; }
-.tokenbtns .clear { font-size: 15px; line-height: 1; padding: 1px 9px 3px; }
+.tokenctl {
+  position: absolute; right: 9px; bottom: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+.tokenctl button { font-size: 11px; padding: 2px 11px; background: var(--card); }
+/* A circle, which is what a pill becomes when it is as wide as it is tall --
+   so it is the same shape as everything else on the sheet rather than an
+   exception to it. */
+.tokenctl .clear {
+  width: 23px; height: 23px; padding: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; line-height: 1;
+}
+.tokenctl .clear:hover { color: var(--danger); border-color: var(--danger); }
 #tokenLen { white-space: nowrap; }
 #tokenLen[data-off] { color: var(--danger); }
 
@@ -242,7 +277,7 @@ pre.code {
    anybody on a phone -- are the ones who need it most. */
 .drop {
   display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
-  padding: 13px 14px; border: 2px dashed var(--line2); border-radius: 8px;
+  padding: 13px 22px; border: 2px dashed var(--line2); border-radius: 999px;
   background: var(--column); color: var(--ink); cursor: pointer;
 }
 .drop:hover { border-color: var(--accent); }
@@ -455,7 +490,7 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
    a fact about the items and the meta row is already the items' line. It is a
    button because it is the only way to set it -- there is no other surface. */
 .pstate {
-  font: inherit; font-size: 11.5px; padding: 0 5px; border-radius: 4px;
+  font: inherit; font-size: 11.5px; padding: 0 8px; border-radius: 999px;
   border: 1px solid currentColor; background: none; cursor: pointer;
   vertical-align: baseline;
 }
@@ -596,10 +631,15 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
   box-shadow: 0 6px 18px rgba(0,0,0,.25); border-radius: 6px; display: none;
 }
 
+/* **A one-line editor is a pill; a several-line one cannot be.** A full round
+   end on a box three lines tall curves through the first and last words of
+   every wrapped line, so prose editors get a generous corner instead -- the
+   same family of shape, at the only radius that does not eat the text. */
 textarea, input.edit {
   font: inherit; width: 100%; color: var(--ink); background: var(--bg);
-  border: 1px solid var(--accent); border-radius: 5px; padding: 5px 6px; resize: vertical;
+  border: 1px solid var(--accent); border-radius: 12px; padding: 6px 11px; resize: vertical;
 }
+input.edit { border-radius: 999px; }
 textarea { font-size: 12.5px; }
 </style>
 </head>
@@ -670,10 +710,10 @@ textarea { font-size: 12.5px; }
       <span class="tokenrow">
         <textarea id="f_token" rows="3" autocomplete="off" spellcheck="false"
           autocapitalize="off" placeholder="github_pat_…"></textarea>
-        <span class="tokenbtns">
+        <span class="tokenctl">
           <button type="button" id="showToken" title="Show or hide the token">show</button>
           <button type="button" id="clearToken" class="clear"
-            title="Clear the token">&times;</button>
+            title="Clear the token" aria-label="Clear the token">&times;</button>
         </span>
       </span>
       <span class="fine">Fine-grained, this repository only, Contents: read and write.
@@ -754,7 +794,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v28 · 2026-09-12";
+const VERSION = "v29 · 2026-09-12";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
