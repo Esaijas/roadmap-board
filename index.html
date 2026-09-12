@@ -104,8 +104,6 @@ h1 { font-size: 15px; font-weight: 600; margin: 0; }
 .project:empty { display: none; }
 
 #version { font-variant-numeric: tabular-nums; }
-#widthOut { font-variant-numeric: tabular-nums; min-width: 4.5em; }
-#f_width { flex: 1; min-width: 120px; accent-color: var(--accent); }
 .status { color: var(--ink3); font-size: 12px; }
 .spacer { flex: 1; }
 button {
@@ -147,7 +145,7 @@ button.glyph .also { font-size: 13px; }
 #ask { z-index: 70; }
 .sheetbox {
   background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
-  padding: 18px 20px 16px; width: min(460px, 100%); margin-top: 6vh;
+  padding: 18px 20px 16px; width: min(540px, 100%); margin-top: 6vh;
   display: flex; flex-direction: column; gap: 12px;
 }
 .sheetbox h2 { font-size: 15px; margin: 0; }
@@ -178,10 +176,32 @@ button.glyph .also { font-size: 13px; }
    only way to tell used to be a browser console -- which is a debugger, on a
    machine that may not have one, for a question as ordinary as "did the whole
    thing paste". The count is always visible; the characters are behind a
-   press, because most of the time this sheet is open in front of somebody. */
-.tokenrow { display: flex; gap: 6px; align-items: stretch; }
-.tokenrow input { flex: 1; min-width: 0; }
-.tokenrow button { flex: 0 0 auto; font-size: 12px; padding: 0 9px; }
+   press, because most of the time this sheet is open in front of somebody.
+
+   **It wraps, and that is why it is a textarea.** A fine-grained token is 93
+   characters and a one-line box at this width shows about forty of them, so
+   checking one meant dragging a cursor through it -- and the check somebody
+   actually wants to make is against the value on GitHub's page, which is read
+   whole. Monospace for the same reason: `l` and `1` decide the answer.
+
+   Masking is `-webkit-text-security`, which every current engine supports
+   under that name, and where it is not supported the field simply shows --
+   which is the state the button offers anyway. Nothing is hidden that the
+   press would not reveal. */
+.tokenrow { display: flex; gap: 6px; align-items: flex-start; }
+.tokenrow textarea {
+  flex: 1; min-width: 0; resize: vertical;
+  font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px; line-height: 1.5; letter-spacing: normal; text-transform: none;
+  color: var(--ink); background: var(--column);
+  border: 1px solid var(--line2); border-radius: 6px; padding: 7px 8px;
+  overflow-wrap: anywhere; word-break: break-all;
+}
+.tokenrow textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#f_token.masked { -webkit-text-security: disc; }
+.tokenbtns { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.tokenbtns button { font-size: 12px; padding: 3px 9px; }
+.tokenbtns .clear { font-size: 15px; line-height: 1; padding: 1px 9px 3px; }
 #tokenLen { white-space: nowrap; }
 #tokenLen[data-off] { color: var(--danger); }
 
@@ -646,6 +666,19 @@ textarea { font-size: 12.5px; }
           name above to switch; the cross forgets it and its token.</span>
       </div>
     </div>
+    <label>Token
+      <span class="tokenrow">
+        <textarea id="f_token" rows="3" autocomplete="off" spellcheck="false"
+          autocapitalize="off" placeholder="github_pat_…"></textarea>
+        <span class="tokenbtns">
+          <button type="button" id="showToken" title="Show or hide the token">show</button>
+          <button type="button" id="clearToken" class="clear"
+            title="Clear the token">&times;</button>
+        </span>
+      </span>
+      <span class="fine">Fine-grained, this repository only, Contents: read and write.
+        Kept in this browser. <span id="tokenLen"></span></span>
+    </label>
     <button class="drop" id="dropHere">
       <span class="dropmark">&#8615;</span>
       <span><strong>Drop a config file here</strong>
@@ -654,38 +687,6 @@ textarea { font-size: 12.5px; }
     <label>Owner<input id="f_owner" autocomplete="off" spellcheck="false" placeholder="octocat"></label>
     <label>Repository<input id="f_repo" autocomplete="off" spellcheck="false" placeholder="my-project"></label>
     <label>Branch<input id="f_branch" autocomplete="off" spellcheck="false" placeholder="main"></label>
-    <label>File<input id="f_path" autocomplete="off" spellcheck="false" placeholder="docs/roadmap.json"></label>
-    <label>Commit message
-      <input id="f_message" autocomplete="off" spellcheck="false">
-      <span class="fine">Ending it <code>[skip ci]</code> stops every save starting a
-        build. Drop that if your project wants saves to trigger something.</span>
-    </label>
-    <label>Token
-      <span class="tokenrow">
-        <input id="f_token" type="password" autocomplete="off" spellcheck="false"
-          placeholder="github_pat_…">
-        <button type="button" id="showToken" title="Show or hide the token">show</button>
-      </span>
-      <span class="fine">Fine-grained, this repository only, Contents: read and write.
-        Kept in this browser. <span id="tokenLen"></span></span>
-    </label>
-    <div class="sheetrow">
-      <button id="saveConfig">Save a config file</button>
-      <span class="fine">for the project above, without the token</span>
-    </div>
-    <label class="field">
-      <span>Column width</span>
-      <span class="row">
-        <input id="f_width" type="range" min="240" max="620" step="4">
-        <span class="fine" id="widthOut"></span>
-        <button type="button" id="resetWidth"
-          title="Back to 292 px, and drop any width a column was given by hand">reset</button>
-      </span>
-      <span class="fine">The width every column starts at. Applies as you drag,
-        and stays on this device. <strong>Drag the space between two columns</strong>
-        to give the one on its left a width of its own; <em>reset</em> puts them
-        all back.</span>
-    </label>
     <div class="sheetrow">
       <span class="fine" id="version"></span>
       <button id="copyVersion" title="Copy the version to the clipboard">copy</button>
@@ -753,7 +754,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v26 · 2026-09-12";
+const VERSION = "v28 · 2026-09-12";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
@@ -901,6 +902,14 @@ function fromBase64(b64) {
 async function api(path, init = {}) {
   const res = await fetch(`https://api.github.com${path}`, {
     ...init,
+    /* **A refusal can be served from the disk cache after the token is
+       fixed.** GitHub marks some answers cacheable for a minute, and the
+       browser does not know the credential changed -- so minting a new token,
+       retrying inside that minute and getting the identical refusal is a loop
+       with no way out of it from the screen. Nothing here is worth re-reading
+       from a cache anyway: every request is either the current plan or an
+       answer about the current token. */
+    cache: "no-store",
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${cfg.token}`,
@@ -1189,13 +1198,52 @@ function firstRun() {
 
    Two more requests, only ever on the failure path, and each of the three
    causes gets named where it happens. */
+/* **Ask the token who it is before asking it about the repository.** A
+   private repository answers 404 to a request GitHub does not recognise as
+   *anybody*, which is the same 404 it gives somebody real who has not been
+   granted access -- so one status covers three different situations and the
+   message could only ever list them and hope.
+
+   `GET /user` separates them in one call, and it needs no permission at all:
+   401 is the token itself being refused, and a login that is not the owner in
+   the settings is a token minted on **another GitHub account**, which is
+   otherwise invisible. Somebody signed into two accounts in two tabs mints a
+   token that reads perfectly on its own settings page and cannot see this
+   repository, and nothing on either screen says why.
+
+   This cost four rounds. Each one changed something real about the token --
+   the repository it named, the access list -- and got back a sentence that
+   named the same three causes, because the board had never established which
+   of them it was. */
 async function explain404() {
+  let who = null;
+  try {
+    const me = await api("/user");
+    if (me.status === 401) {
+      say("GitHub refused the token itself. It is mistyped, or it has expired, "
+        + "or it was revoked — a token that is merely short of permissions is "
+        + "refused differently. Mint a new one and paste the whole value.", true);
+      return;
+    }
+    if (me.ok) { who = (await me.json()).login || null; }
+  } catch { /* the repository probe below reports a blocked page */ }
+
   const repo = await api(`/repos/${cfg.owner}/${cfg.repo}`);
   if (repo.status === 404) {
-    say(`cannot see ${cfg.owner}/${cfg.repo}. Either the token's Repository `
-      + `access does not include it — a fine-grained token defaults to `
-      + `"Public repositories", and a private repo needs it named — or the `
-      + `owner or repository is misspelt.`, true);
+    if (who && who.toLowerCase() !== cfg.owner.toLowerCase()) {
+      say(`this token belongs to the GitHub account “${who}”, and `
+        + `${cfg.owner}/${cfg.repo} belongs to “${cfg.owner}”. A token can only `
+        + `reach repositories of the account it was made on — so either mint `
+        + `one while signed in as ${cfg.owner}, or correct the Owner field if `
+        + `${who} is the account you meant.`, true);
+      return;
+    }
+    say(`the token works${who ? ` and belongs to ${who}` : ""}, but cannot see `
+      + `${cfg.owner}/${cfg.repo}. On the token's page at GitHub, `
+      + `Repository access is a control above the permission list and defaults `
+      + `to "Public repositories" — a private repo has to be named there. `
+      + `Check also that Resource owner says ${cfg.owner}, and that the `
+      + `repository is spelt exactly ${cfg.repo}.`, true);
     return;
   }
   if (!repo.ok) {
@@ -1229,7 +1277,14 @@ async function offerToCreate() {
 }
 
 const panel = document.getElementById("settings");
-const fields = ["owner", "repo", "branch", "path", "message", "token"];
+/* **The panel shows four of the six settings, and the other two still exist.**
+   The file and the commit message were taken off it because they are answered
+   once per project and then never touched -- they come from the config file,
+   or from the defaults. They are *not* dropped from `cfg`: the message is what
+   carries `[skip ci]`, and without it every drag of a card would start an
+   Android build. A field nobody reads is clutter; a setting nobody needs is
+   still a setting. */
+const fields = ["owner", "repo", "branch", "token"];
 
 function fillFields() {
   fields.forEach(f => { document.getElementById("f_" + f).value = cfg[f] || ""; });
@@ -1370,8 +1425,14 @@ document.getElementById("version").textContent = "Pure planner " + VERSION;
    redraws; the columns are already reading the token. */
 const WIDTH_KEY = "roadmap.width.v1";
 const WIDTH_DEFAULT = 292;
-const widthField = document.getElementById("f_width");
-const widthOut = document.getElementById("widthOut");
+/* **These were the slider's `min` and `max` and are now constants.** The
+   control is gone from the panel; the width it last wrote is still honoured,
+   and dragging the space between two columns still gives one a width of its
+   own. Reading the bounds off an element that no longer exists is the way this
+   would have broken -- silently, as `NaN`, which `Math.max` answers for
+   everything. */
+const WIDTH_MIN = 240;
+const WIDTH_MAX = 620;
 
 function readWidth() {
   try {
@@ -1381,28 +1442,17 @@ function readWidth() {
 }
 
 function clampWidth(n) {
-  return Math.max(+widthField.min, Math.min(+widthField.max, n));
+  return Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, n));
 }
 
 function applyWidth(px, remember) {
   const n = clampWidth(px);
   document.documentElement.style.setProperty("--colw", n + "px");
-  widthField.value = n;
-  widthOut.textContent = n + " px";
   if (remember) {
     try { localStorage.setItem(WIDTH_KEY, String(n)); }
     catch { remembers = false; }           // same admission the token makes
   }
 }
-
-widthField.oninput = e => applyWidth(+e.currentTarget.value, false);
-widthField.onchange = e => applyWidth(+e.currentTarget.value, true);
-document.getElementById("resetWidth").onclick = () => {
-  colWidths = {};                          // the slider is the default for all
-  saveColWidths();
-  applyWidth(WIDTH_DEFAULT, true);
-  render();
-};
 applyWidth(readWidth(), false);
 
 /* ── and a column that wants its own width ─────────────────────────────────
@@ -1480,8 +1530,17 @@ document.getElementById("copyVersion").onclick = async e => {
 const tokenBox = document.getElementById("f_token");
 const tokenLen = document.getElementById("tokenLen");
 
+/* **Whitespace is stripped rather than trimmed**, and the box being a textarea
+   is why. A token copied out of a wrapped display, or off a page that put a
+   line break in it, arrives with a newline in the middle -- and a newline in a
+   request header is not a failed request, it is a `TypeError` thrown before
+   anything leaves the browser, reported as "this page is not allowed to call
+   api.github.com". A credential has no whitespace in it, so there is nothing
+   to lose by removing all of it. */
+function cleanToken(v) { return v.replace(/\s+/g, ""); }
+
 function countToken() {
-  const n = tokenBox.value.trim().length;
+  const n = cleanToken(tokenBox.value).length;
   if (!n) { tokenLen.textContent = ""; tokenLen.removeAttribute("data-off"); return; }
   tokenLen.textContent = `${n} characters`
     + (n === TOKEN_LENGTH ? "" : ` — a fine-grained one is ${TOKEN_LENGTH}`);
@@ -1490,10 +1549,30 @@ function countToken() {
 }
 tokenBox.addEventListener("input", countToken);
 
-document.getElementById("showToken").onclick = () => {
-  const shown = tokenBox.type === "text";
-  tokenBox.type = shown ? "password" : "text";
-  document.getElementById("showToken").textContent = shown ? "show" : "hide";
+/* `input` is a password box's `type`; a textarea has no such thing, so the
+   masking is a class. Where the engine does not support it the field shows,
+   and the button goes rather than sitting there lying about what it does. */
+const showBtn = document.getElementById("showToken");
+const CAN_MASK = window.CSS && CSS.supports && CSS.supports("-webkit-text-security", "disc");
+if (CAN_MASK) tokenBox.classList.add("masked"); else showBtn.hidden = true;
+showBtn.onclick = () => {
+  const shown = !tokenBox.classList.contains("masked");
+  tokenBox.classList.toggle("masked", shown);
+  showBtn.textContent = shown ? "show" : "hide";
+};
+
+/* **Clearing it is a button because emptying it by hand is the hard case.**
+   The whole field is two wrapped lines of characters that all look alike, and
+   the mistake being undone is usually "the old token is still in here" --
+   which is exactly the state where selecting all of it and being sure you did
+   is worth a press. */
+document.getElementById("clearToken").onclick = () => {
+  tokenBox.value = "";
+  if (CAN_MASK) tokenBox.classList.add("masked");
+  showBtn.textContent = "show";
+  countToken();
+  tokenBox.focus();
+  say("token cleared — paste one and press Connect");
 };
 
 document.getElementById("gear").onclick = openSettings;
@@ -1528,11 +1607,11 @@ const CONFIG_FIELDS = ["owner", "repo", "branch", "path", "message"];
    for when they have been told to go and find one. */
 const CONFIG_NAME = "pure-planner-config.json";
 
-function configText() {
-  const out = { pureplanner: 1 };
-  CONFIG_FIELDS.forEach(f => { out[f] = cfg[f]; });
-  return JSON.stringify(out, null, 2) + "\n";
-}
+/* The config file is still read -- the drop zone is the fastest way to point
+   this at a project -- but it is no longer written from here. Composing one is
+   a once-per-project job, and the button sat on a panel opened for the token,
+   which is a per-person and per-device job. It was the only control on the
+   sheet that produced a file rather than changing a setting. */
 
 /* The marker earns its place the first time somebody drops the wrong file.
    `roadmap.json` is the file sitting right beside this one in every project
@@ -1625,39 +1704,6 @@ document.body.appendChild(picker);
    selectable whatever happens, which is the same rule the gate report follows:
    a convenience that only works for some must still degrade to something
    everybody can use. */
-document.getElementById("saveConfig").onclick = async () => {
-  const text = configText();
-  const choice = await ask({
-    title: "Config file",
-    message: "Everything but the token. Commit it beside your plan, and anybody "
-      + "on the project drops it in instead of typing five fields.",
-    code: text,
-    buttons: [
-      { label: "Close", value: null },
-      { label: "Copy", value: "copy" },
-      { label: "Download", value: "save", primary: true },
-    ],
-  });
-  if (choice === "save") {
-    try {
-      const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
-      const a = document.createElement("a");
-      a.href = url; a.download = CONFIG_NAME;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-      say("saved " + CONFIG_NAME);
-    } catch (e) {
-      say("this page is not allowed to save a file — copy the text instead", true);
-    }
-  } else if (choice === "copy") {
-    try {
-      await navigator.clipboard.writeText(text);
-      say("config copied");
-    } catch {
-      say("could not reach the clipboard — select the text and copy it", true);
-    }
-  }
-};
 /* **These fields are filled by pasting, so they are cleaned like paste.** Not
    defensiveness for its own sake -- each of these is something that actually
    arrives. A field's own label comes along with the value ("Repository
@@ -1683,7 +1729,8 @@ function splitRepo(owner, repo) {
 
 document.getElementById("saveSettings").onclick = () => {
   fields.forEach(f => {
-    cfg[f] = unlabel(document.getElementById("f_" + f).value.trim());
+    const raw = document.getElementById("f_" + f).value;
+    cfg[f] = f === "token" ? cleanToken(raw) : unlabel(raw.trim());
   });
   [cfg.owner, cfg.repo] = splitRepo(cfg.owner, cfg.repo);
   fields.forEach(f => { document.getElementById("f_" + f).value = cfg[f]; });
@@ -1855,9 +1902,13 @@ function gap(index, left) {
   /* **No double-click-to-reset here, and it was tried.** A double click fires
      an ordinary click first, so it opened the New release dialog on the way
      past — two gestures competing for one strip of screen, and the one that
-     wins is the one you did not mean. Resetting lives on the *reset* button in
-     Settings, which clears every column's own width and puts them all back on
-     the default. One place, no clash. */
+     wins is the one you did not mean.
+
+     There used to be a *reset* button in Settings and it went with the width
+     control. **So dragging is now the only way back, and it is always
+     available**: `clampWidth` holds every column between 240 and 620 px, so
+     one can be made awkward but never lost, and the handle stays where it is.
+     That is the whole cost of taking the control off the panel. */
   g.onclick = () => {
     if (g.dataset.dragged) { g.dataset.dragged = ""; return; }
     insertRelease(index);
