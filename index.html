@@ -48,10 +48,6 @@
   --done: #1a7f4b;
   --danger: #c0392b;
   --drop: #e8f0fe;
-  /* The wash behind a locked column. Flat, not a tint by hue: the hue
-     tints already mean the family of work a column holds, and a second
-     thing riding the same channel would make two states one colour. */
-  --lockwash: #0b0f1608;
 
   /* Set on :root by the width control, and kept in this browser rather than in
      the plan: how wide a column reads is a fact about the screen in front of
@@ -66,7 +62,6 @@
     --line: #2d3138; --line2: #3b4048;
     --accent: #5b8def; --warn: #e0a267;
     --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
-    --lockwash: #ffffff10;
   }
 }
 :root[data-theme="dark"] {
@@ -75,7 +70,6 @@
   --line: #2d3138; --line2: #3b4048;
   --accent: #5b8def; --warn: #e0a267;
   --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
-    --lockwash: #ffffff10;
 }
 
 * { box-sizing: border-box; }
@@ -489,19 +483,43 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
    reason it stays on the board rather than going to the shipped rail is so the
    run can be followed while it happens.
 
-   So every signal is outside the text: a heavier border in the ink the padlock
-   uses, a flat wash behind the column, and the word *Locked* on a chip beside
-   the plan state. Three of them, and not one costs any contrast.
+   So every signal is outside the text: the id row turned into a solid band of
+   ink, a border in the same ink, and the word *Locked* on a chip beside the
+   plan state, filled to match. Three of them, and not one costs any contrast
+   -- the band's words are the page's own background on its own ink, which is
+   the strongest pairing the board has.
+
+   **v32: a band, because a wash was not seen.** Until then the signal was a
+   3% grey wash and a 1.5 px grey border, and the wash *replaced* the column's
+   major tint rather than sitting on it -- so the locked column came out as the
+   least coloured thing on the board, which read as "nothing here" rather than
+   "this one is being built". It came back as *"make it easier to notice"*.
+
+   **Ink rather than a hue**, still: the tints already spend the wheel on which
+   major a column belongs to, red is the delete and green is done, so any hue
+   picked for *locked* would mean two things at once. Ink means none of them,
+   and at full strength it is the loudest thing on the board in either theme.
+   The column keeps its major's tint underneath, so it still reads as part of
+   its run.
 
    **The dimming that is left is on the controls** -- the grip, the delete, the
    tick, the add button. Those are affordances rather than content, and a
    control that looks live and does nothing is the thing worth preventing. */
 .column.locked {
   cursor: default;
-  border-color: var(--ink3); border-width: 1.5px;
-  background-image: linear-gradient(var(--lockwash), var(--lockwash));
+  border-color: var(--ink); border-width: 2px;
 }
-.column.locked > .crow { cursor: default; background: none; }
+/* An opaque band, and that matters twice: the row is sticky, so cards scroll
+   underneath it, and a transparent one -- which the wash version had -- let
+   them show through the id. */
+.column.locked > .crow {
+  cursor: default; background: var(--ink); color: var(--bg);
+  padding-bottom: 8px;
+}
+.column.locked > .chead { padding-top: 8px; }
+.column.locked > .crow > .cid,
+.column.locked > .crow > .lock,
+.column.locked > .crow > .kill { color: var(--bg); }
 .column.locked .grip,
 .column.locked .kill,
 .column.locked .tick,
@@ -509,7 +527,7 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 /* Says it in a word, in the row that already carries the plan state. */
 .lockchip {
   font-size: 11.5px; padding: 0 8px; border-radius: 999px;
-  border: 1px solid currentColor; color: var(--ink2);
+  border: 1px solid var(--ink); background: var(--ink); color: var(--bg);
 }
 .column.locked .cid,
 .column.locked .cq,
@@ -518,7 +536,10 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 .column.locked .ctitle,
 .column.locked .cfull,
 .column.locked .cbody { cursor: default; }
-.column.locked .cid:hover { background: none; color: inherit; }
+/* Spelled out to the same depth as the tinted id's hover, which is more
+   specific than a plain `.column.locked .cid:hover` and would otherwise turn
+   the id the colour of the band it sits on. */
+.column.locked > .crow > .cid:hover { background: none; color: var(--bg); }
 .column.locked .grip { cursor: default; }
 .kill:hover { color: var(--danger); }
 .cq { font-size: 14px; font-weight: 600; margin: 3px 0 0; }
@@ -855,7 +876,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v31 · 2026-10-31";
+const VERSION = "v32 · 2026-10-31";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
