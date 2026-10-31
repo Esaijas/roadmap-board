@@ -459,6 +459,30 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
   border: none; background: none; color: var(--ink3); padding: 0 3px;
   font-size: 14px; line-height: 1; cursor: pointer;
 }
+/* ── a release being built ─────────────────────────────────────────────
+   The padlock is the only live control on a locked column, so it is the
+   only thing on one drawn at full strength. Everything else is dimmed
+   rather than hidden: a column whose cards vanished while it was being
+   built would read as work lost. */
+.lock {
+  border: none; background: none; color: var(--ink3); padding: 0 3px;
+  font-size: 12px; line-height: 1; cursor: pointer;
+}
+.lock:hover { color: var(--ink2); }
+.lock[data-on] { color: var(--ink); }
+.column.locked { cursor: default; }
+.column.locked > .crow { cursor: default; }
+.column.locked > .chead,
+.column.locked > .cards { opacity: 0.62; }
+.column.locked .cid,
+.column.locked .cq,
+.column.locked .prose,
+.column.locked .gate,
+.column.locked .ctitle,
+.column.locked .cfull,
+.column.locked .cbody { cursor: default; }
+.column.locked .cid:hover { background: none; color: inherit; }
+.column.locked .grip { cursor: default; }
 .kill:hover { color: var(--danger); }
 .cq { font-size: 14px; font-weight: 600; margin: 3px 0 0; }
 
@@ -794,7 +818,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v29 · 2026-09-12";
+const VERSION = "v30 · 2026-10-31";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
@@ -2016,6 +2040,52 @@ const TINT_HUES = [212, 268, 32, 322, 190, 246, 88];
    .60 ... so `.0` opens the run at full strength and R6.8 is still tinted
    enough to read as part of it. The minor *is* the depth -- `renumber` makes
    them run 0, 1, 2 in board order -- so this needs no counting. */
+/* ── a release that is being built ─────────────────────────────────────── */
+
+/* **Locked means the number is frozen, which is more than the content.**
+   A column being implemented has its id written into a release document, into
+   `tools/gates.py`, into a generated Kotlin file and into every commit
+   message of the run. The ids here follow *position*, so an insert three
+   columns away renames it -- and that rename is silent from the inside: the
+   work carries on against a number the board no longer has.
+
+   **It is deliberately not "the leftmost unbuilt column".** That is usually
+   the one being built and occasionally not: the column to the right of the
+   current leftmost has no plan at all, and R8.0 shipped while two unbuilt
+   columns sat to its left. A rule that guesses locks the wrong column without
+   saying so, where a padlock costs one click.
+
+   **A shipped release is not also locked.** Shipping freezes an id for good
+   and takes the column off the board, so `shipped` already does everything
+   this does; treating one as both would mean two ways to say the same thing
+   and a lock nobody can clear. */
+function locked(rel) {
+  return !!rel.locked && !rel.shipped;
+}
+
+/* The position of the locked release, or -1. At most one is expected -- the
+   padlock does not enforce that, because two runs at once is a situation to
+   describe rather than to prevent, and the guards below all read "at or left
+   of *the leftmost* locked column", which is correct for any number of them. */
+function lockedAt() { return DATA.releases.findIndex(locked); }
+
+/* Say which release is holding the board, and why, rather than ignoring the
+   click. A control that silently does nothing reads as broken. */
+function refuse(rel, what) {
+  say(`${rel.id} is locked while it is being built — ${what}`);
+  return true;
+}
+
+/* True when an operation at `index` would renumber a locked release: anything
+   at or to the left of it shifts the columns after it along, and the ids
+   follow position. Everything to its right is free, which is the whole point
+   -- and because the column being built is usually the leftmost unbuilt one,
+   there is normally nothing to its left to refuse. */
+function wouldRenumberLocked(index) {
+  const at = lockedAt();
+  return at >= 0 && index <= at ? DATA.releases[at] : null;
+}
+
 function tintOf(rel) {
   const id = parseId(rel.id);
   if (!id) return null;                          // Spring, Summer, Autumn
@@ -2047,17 +2117,40 @@ function column(rel, ri) {
   const row = el("div", "crow");
   /* Typing an id is now how a major is declared -- RX.0 opens one and carries
      everything to its right -- so the edit has to be followed by a reflow. */
+  const held = locked(rel);
+  if (held) c.classList.add("locked");
+  const freeze = () => held && refuse(rel, "unlock it to edit");
+
   row.appendChild(editable(el("div", "cid", rel.id),
-    v => { rel.id = v; reflow(); }, "input"));
+    v => { rel.id = v; reflow(); }, "input", freeze));
+
+  /* The one control that stays live on a locked column, because it is the way
+     out of being locked. */
+  const lock = el("button", "lock", held ? "🔒" : "🔓");
+  lock.title = held
+    ? `${rel.id} is locked while it is being built — unlock it`
+    : "Lock this release while it is being built";
+  if (held) lock.dataset.on = "";
+  lock.setAttribute("aria-pressed", String(held));
+  lock.onclick = e => {
+    e.stopPropagation();
+    if (held) delete rel.locked; else rel.locked = true;
+    touched(); render();
+  };
+  row.appendChild(lock);
+
   const kill = el("button", "kill", "×");
   kill.title = "Delete this release";
   kill.onclick = e => { e.stopPropagation(); deleteRelease(ri); };
   row.appendChild(kill);
-  row.addEventListener("pointerdown", e => startDrag(e, c, "column", { ri }));
+  if (!held) {
+    row.addEventListener("pointerdown", e => startDrag(e, c, "column", { ri }));
+  }
   c.appendChild(row);
 
   const head = el("div", "chead");
-  head.appendChild(editable(el("div", "cq", rel.question), v => { rel.question = v; }));
+  head.appendChild(editable(el("div", "cq", rel.question),
+    v => { rel.question = v; }, undefined, freeze));
   /* **An empty prose used to render an empty div**, which is nothing to look
      at and nothing to click -- so a release created from the + had a question
      and no visible way to say why it exists. The placeholder follows the same
@@ -2065,11 +2158,11 @@ function column(rel, ri) {
      clears on the way in. */
   head.appendChild(editable(
     el("div", "prose", rel.prose || "— why this release exists —"),
-    v => { rel.prose = v; }));
+    v => { rel.prose = v; }, undefined, freeze));
   head.appendChild(el("div", "eyebrow", "Gate"));
   head.appendChild(editable(
     el("div", "gate", rel.gate || "— not written yet —"),
-    v => { rel.gate = v; }));
+    v => { rel.gate = v; }, undefined, freeze));
 
   const long = (rel.prose || "").length > 150 || (rel.gate || "").length > 90;
   if (long) {
@@ -2096,6 +2189,7 @@ function column(rel, ri) {
   chip.title = PLAN_STATES[state][1];
   chip.onclick = e => {
     e.stopPropagation();
+    if (freeze()) return;
     /* Clicking a stamped column clears it, so a stamp made in error is undone
        the same way it was made. `startDrag` already refuses a button, so this
        does not have to fight the column's own pointerdown. */
@@ -2107,13 +2201,16 @@ function column(rel, ri) {
   meta.appendChild(chip);
   head.appendChild(meta);
 
-  head.addEventListener("pointerdown", e => startDrag(e, c, "column", { ri }));
+  if (!held) {
+    head.addEventListener("pointerdown", e => startDrag(e, c, "column", { ri }));
+  }
   c.appendChild(head);
 
   const cards = el("div", "cards");
   rel.items.forEach((item, ii) => cards.appendChild(card(rel, item, ri, ii)));
   const add = el("button", "add", "+ item");
   add.onclick = () => {
+    if (freeze()) return;
     rel.items.push({ title: "New item", body: "", done: false });
     touched(); render();
     /* Holding the scroll still is most of it, but a column already scrolled to
@@ -2141,9 +2238,13 @@ function card(rel, item, ri, ii) {
   const d = el("div", "card" + (item.done ? " done" : ""));
   d.dataset.release = ri;
   d.dataset.item = ii;
+  const held = locked(rel);
+  const freeze = () => held && refuse(rel, "unlock it to change its items");
 
   const grip = el("div", "grip", "∷");
-  grip.addEventListener("pointerdown", e => startDrag(e, d, "card", { ri, ii }));
+  if (!held) {
+    grip.addEventListener("pointerdown", e => startDrag(e, d, "card", { ri, ii }));
+  }
   d.appendChild(grip);
 
   const tick = document.createElement("input");
@@ -2151,7 +2252,16 @@ function card(rel, item, ri, ii) {
   tick.className = "tick";
   tick.checked = !!item.done;
   tick.title = "Done";
-  tick.onchange = () => { item.done = tick.checked; touched(); render(); };
+  /* **The tick is frozen with the rest, which is worth a sentence because it
+     looks like the exception.** Ticking an item off is the one edit somebody
+     would want *during* a run, and it is also an edit: `planSignature` ignores
+     `done`, so a tick does not stale the stamp -- but a locked column that
+     accepts one change and refuses the others is a column nobody can predict.
+     The run marks them off in the closing commit. */
+  tick.onchange = () => {
+    if (held) { tick.checked = !!item.done; refuse(rel, "unlock it to tick items off"); return; }
+    item.done = tick.checked; touched(); render();
+  };
   d.appendChild(tick);
 
   const body = el("div", "cardbody");
@@ -2170,17 +2280,18 @@ function card(rel, item, ri, ii) {
   title.addEventListener("dblclick", toggle);
   body.appendChild(editable(
     title,
-    hasShort ? (v => { item.short = v; }) : (v => { item.title = v; })));
+    hasShort ? (v => { item.short = v; }) : (v => { item.title = v; }),
+    undefined, freeze));
 
   if (open) {
     // The sentence it was written in, only when a shorter one is standing in
     // front of it -- otherwise this would print the same text twice.
     if (hasShort) {
       body.appendChild(editable(el("div", "cfull", item.title),
-        v => { item.title = v; }));
+        v => { item.title = v; }, undefined, freeze));
     }
     body.appendChild(editable(el("div", "cbody", item.body || "— no note —"),
-      v => { item.body = v; }));
+      v => { item.body = v; }, undefined, freeze));
   }
   d.appendChild(body);
 
@@ -2196,6 +2307,7 @@ function card(rel, item, ri, ii) {
   kill.title = "Delete this item";
   kill.onclick = async e => {
     e.stopPropagation();
+    if (freeze()) return;
     if (!await ask({ title: "Delete this item?", message: item.title,
                      buttons: YES_NO("Delete", true) })) return;
     rel.items.splice(ii, 1); touched(); render();
@@ -2206,10 +2318,15 @@ function card(rel, item, ri, ii) {
 
 /* Edit in place: the text becomes a field where it sits, and there is no modal
    anywhere in this app. One interaction, no second surface to design. */
-function editable(node, commit, kind) {
+/* `frozen` is a function rather than a boolean so that it is read at click
+   time. The nodes are rebuilt on every render, so a boolean would work today
+   -- and would be wrong the first time one is kept, which is the kind of
+   thing nobody remembers when keeping it. */
+function editable(node, commit, kind, frozen) {
   node.addEventListener("click", e => {
     if (node.querySelector("textarea, input")) return;
     e.stopPropagation();
+    if (frozen && frozen()) return;
     const multiline = kind !== "input";
     const f = document.createElement(multiline ? "textarea" : "input");
     if (!multiline) f.className = "edit";
@@ -2336,6 +2453,23 @@ function renumber() {
      board that opens at R1.0 is not dragged down to R0. */
   parsed.forEach(({ rel, id }) => {
     if (!id || rel.shipped) return;               // unparseable, or frozen
+    /* **A locked release keeps its number, and the run has to step over it.**
+       Returning early -- which is all a shipped release needs -- would leave
+       `next` where it was, and the column after this one would be handed the
+       same id. The board would then draw two of them, which is the duplicate
+       the major-from-position rule above exists to prevent, arriving through a
+       third door.
+
+       The guards on inserting, deleting and dragging are what keep this
+       honest: they refuse any move at or left of a locked column, so the
+       number it is holding cannot also be the number position would give to
+       something else. Without them this line would silently produce the
+       duplicate instead of preventing it. */
+    if (locked(rel)) {
+      major = id.major;
+      next = Number(id.minor) + 1;
+      return;
+    }
     if (major === null) {
       /* The leftmost unbuilt column. Ending `.0` it opens the major after the
          shipped run; anything else is continuing the last shipped major, and
@@ -2458,6 +2592,22 @@ function nextId(index) {
 
 
 async function insertRelease(index) {
+  /* **Inserting here would renumber the column being built.** Everything from
+     this position rightwards shifts along and the ids follow position, so the
+     release under construction would quietly become the next number up while
+     its release document, its generated checklist and its commit messages went
+     on naming the old one. Columns to the right of it insert freely. */
+  const held = wouldRenumberLocked(index);
+  if (held) {
+    await ask({
+      title: `${held.id} is being built`,
+      message: "A column added here would renumber it, and the number is "
+        + "already written into its release document and its checklist. "
+        + "Add it to the right of that column, or unlock it first.",
+      buttons: [{ label: "Right", value: null, primary: true }],
+    });
+    return;
+  }
   const before = DATA.releases[index - 1]?.id;
   const after = DATA.releases[index]?.id;
   const id = await ask({
@@ -2484,6 +2634,21 @@ async function insertRelease(index) {
    action and the confirm should say so. */
 async function deleteRelease(ri) {
   const rel = DATA.releases[ri];
+  /* Deleting the locked column, or anything left of it -- the second one
+     renumbers it for the same reason an insert does. */
+  const held = wouldRenumberLocked(ri);
+  if (held) {
+    await ask({
+      title: `${held.id} is being built`,
+      message: held === rel
+        ? "Unlock it first. A release cannot be deleted while a run is "
+          + "writing its document and its checklist."
+        : "Deleting this column would renumber it, and its number is already "
+          + "written into its release document. Unlock it first.",
+      buttons: [{ label: "Right", value: null, primary: true }],
+    });
+    return;
+  }
   if (rel.shipped) {
     await ask({
       title: `${rel.id} has shipped`,
@@ -2588,6 +2753,12 @@ function onUp(e) {
     if (!col || col.dataset.release === undefined) return;
     const to = +col.dataset.release;
     if (DATA.releases[to].shipped) return;
+    /* Both ends, because moving a card *out* of a column being built changes
+       the plan the run is working from just as surely as moving one in. */
+    if (locked(DATA.releases[to])) return refuse(DATA.releases[to], "unlock it to move items into it") && undefined;
+    if (locked(DATA.releases[d.ref.ri])) {
+      return refuse(DATA.releases[d.ref.ri], "unlock it to move items out of it") && undefined;
+    }
     const overCard = under?.closest(".card");
     const item = DATA.releases[d.ref.ri].items.splice(d.ref.ii, 1)[0];
     let at = DATA.releases[to].items.length;
@@ -2605,6 +2776,13 @@ function onUp(e) {
   let at = g ? +g.dataset.at
             : col?.dataset.release !== undefined ? +col.dataset.release : null;
   if (at === null || at === undefined || Number.isNaN(at)) return;
+  /* **A column drag renumbers everything it passes**, so the test is on both
+     ends of the move rather than on what is being dragged. Dragging the locked
+     column itself cannot happen -- its row and head never get a pointerdown --
+     but dragging another column from its left, or to its left, would renumber
+     it. To its right, on both ends, is free. */
+  const across = wouldRenumberLocked(d.ref.ri) || wouldRenumberLocked(at);
+  if (across) { refuse(across, "move columns to the right of it, or unlock it"); render(); return; }
   const rel = DATA.releases.splice(d.ref.ri, 1)[0];
   if (at > d.ref.ri) at--;
   DATA.releases.splice(Math.max(0, Math.min(at, DATA.releases.length)), 0, rel);
