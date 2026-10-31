@@ -48,6 +48,10 @@
   --done: #1a7f4b;
   --danger: #c0392b;
   --drop: #e8f0fe;
+  /* The wash behind a locked column. Flat, not a tint by hue: the hue
+     tints already mean the family of work a column holds, and a second
+     thing riding the same channel would make two states one colour. */
+  --lockwash: #0b0f1608;
 
   /* Set on :root by the width control, and kept in this browser rather than in
      the plan: how wide a column reads is a fact about the screen in front of
@@ -62,6 +66,7 @@
     --line: #2d3138; --line2: #3b4048;
     --accent: #5b8def; --warn: #e0a267;
     --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
+    --lockwash: #ffffff10;
   }
 }
 :root[data-theme="dark"] {
@@ -70,6 +75,7 @@
   --line: #2d3138; --line2: #3b4048;
   --accent: #5b8def; --warn: #e0a267;
   --done: #4cb782; --danger: #e0705f; --drop: #1d2a41;
+    --lockwash: #ffffff10;
 }
 
 * { box-sizing: border-box; }
@@ -476,10 +482,35 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
 .lock:hover { color: var(--ink2); }
 .lock[data-on] { color: var(--ink); }
 .lock:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
-.column.locked { cursor: default; }
-.column.locked > .crow { cursor: default; }
-.column.locked > .chead,
-.column.locked > .cards { opacity: 0.62; }
+/* **The column says it is locked without dimming a word of it.** The first
+   version put `opacity: .62` on the head and the cards, which is the obvious
+   way to say "not now" and came straight back: the text got hard to read, and
+   a column nobody can read is worse than one nobody can edit -- the whole
+   reason it stays on the board rather than going to the shipped rail is so the
+   run can be followed while it happens.
+
+   So every signal is outside the text: a heavier border in the ink the padlock
+   uses, a flat wash behind the column, and the word *Locked* on a chip beside
+   the plan state. Three of them, and not one costs any contrast.
+
+   **The dimming that is left is on the controls** -- the grip, the delete, the
+   tick, the add button. Those are affordances rather than content, and a
+   control that looks live and does nothing is the thing worth preventing. */
+.column.locked {
+  cursor: default;
+  border-color: var(--ink3); border-width: 1.5px;
+  background-image: linear-gradient(var(--lockwash), var(--lockwash));
+}
+.column.locked > .crow { cursor: default; background: none; }
+.column.locked .grip,
+.column.locked .kill,
+.column.locked .tick,
+.column.locked .add { opacity: 0.3; }
+/* Says it in a word, in the row that already carries the plan state. */
+.lockchip {
+  font-size: 11.5px; padding: 0 8px; border-radius: 999px;
+  border: 1px solid currentColor; color: var(--ink2);
+}
 .column.locked .cid,
 .column.locked .cq,
 .column.locked .prose,
@@ -2206,6 +2237,13 @@ function column(rel, ri) {
   };
   meta.append(" · ");
   meta.appendChild(chip);
+  /* **In a word, because a border and a wash are both things somebody has to
+     already know the meaning of.** The padlock says it, the column says it,
+     and this says it in the one way that needs no key. */
+  if (held) {
+    meta.append(" · ");
+    meta.appendChild(el("span", "lockchip", "Locked"));
+  }
   head.appendChild(meta);
 
   if (!held) {
@@ -2246,8 +2284,19 @@ const CHEVRON =
    everything around them, and a different shape on every platform. Nothing
    else on this board is an emoji.
 
-   Two parts, no keyhole and no shading -- at 13 px a keyhole is a smudge, and
-   the state is already carried by the shackle and by the ink.
+   Two parts, no keyhole and no shading -- at 13 px a keyhole is a smudge.
+
+   **The locked one is filled and the unlocked one is hollow, and that is the
+   whole of how the two are told apart.** The first version differed only in
+   the shackle: closed, versus lifted with its right leg off the body. At the
+   size it is actually drawn that is about one pixel of stroke, and it came
+   straight back as *"I can't see the difference between the two states"* --
+   correctly. A body of solid ink against an outline is a difference nobody has
+   to look for, and it survives being glanced at, shrunk, or screenshotted.
+
+   The ink darkens as well, but that is the lesser cue by design: **a state
+   whose only tell is a colour is one somebody gets wrong**, and the two are
+   now different shapes before they are different shades.
 
    **1.4 rather than the chevron's 1.9**, and it is the one place these
    deliberately differ: the chevron is a single line with nothing near it,
@@ -2257,16 +2306,16 @@ const CHEVRON =
    1.6 the body fills in and the whole mark reads as a lump, which is invisible
    when the same drawing is looked at four times over.
 
-   The open one lifts the shackle and takes its right leg off the body, so the
-   two are told apart by shape before colour -- the closed one is also drawn in
-   darker ink, but a state that needs the colour read to be understood is a
-   state somebody gets wrong in a screenshot. */
+   A swung shackle was the other candidate and is drawn in the scratch
+   comparison that chose this one; at 13 px it is legible and still much
+   weaker than the fill, so it was dropped rather than added on top. One strong
+   difference beats two faint ones. */
 const LOCK_SHUT =
   '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
   '<path d="M5.7 6.9V5a2.3 2.3 0 0 1 4.6 0v1.9" stroke="currentColor"' +
   ' stroke-width="1.4" stroke-linecap="round"/>' +
   '<rect x="3.3" y="6.9" width="9.4" height="6.7" rx="1.5"' +
-  ' stroke="currentColor" stroke-width="1.4"/></svg>';
+  ' fill="currentColor"/></svg>';
 
 const LOCK_OPEN =
   '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
