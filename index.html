@@ -465,11 +465,17 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
    rather than hidden: a column whose cards vanished while it was being
    built would read as work lost. */
 .lock {
-  border: none; background: none; color: var(--ink3); padding: 0 3px;
-  font-size: 12px; line-height: 1; cursor: pointer;
+  flex: 0 0 auto; width: 18px; height: 18px; padding: 0; margin-bottom: -4px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: none; color: var(--ink3); cursor: pointer;
 }
+/* The row is baseline-aligned for the id and the ×, and an SVG has no
+   baseline to align -- hence the nudge above rather than a different
+   alignment for the row, which would move the two text glyphs instead. */
+.lock svg { width: 13px; height: 13px; }
 .lock:hover { color: var(--ink2); }
 .lock[data-on] { color: var(--ink); }
+.lock:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 .column.locked { cursor: default; }
 .column.locked > .crow { cursor: default; }
 .column.locked > .chead,
@@ -2126,7 +2132,8 @@ function column(rel, ri) {
 
   /* The one control that stays live on a locked column, because it is the way
      out of being locked. */
-  const lock = el("button", "lock", held ? "🔒" : "🔓");
+  const lock = el("button", "lock");
+  lock.innerHTML = held ? LOCK_SHUT : LOCK_OPEN;
   lock.title = held
     ? `${rel.id} is locked while it is being built — unlock it`
     : "Lock this release while it is being built";
@@ -2233,6 +2240,40 @@ const CHEVRON =
   '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
   '<path d="M4 6.25 8 10.25 12 6.25" stroke="currentColor" stroke-width="1.9"' +
   ' stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/* The padlock, closed and open. **Drawn rather than typed**, because 🔒 and 🔓
+   arrive from the system emoji font: full colour, a different weight from
+   everything around them, and a different shape on every platform. Nothing
+   else on this board is an emoji.
+
+   Two parts, no keyhole and no shading -- at 13 px a keyhole is a smudge, and
+   the state is already carried by the shackle and by the ink.
+
+   **1.4 rather than the chevron's 1.9**, and it is the one place these
+   deliberately differ: the chevron is a single line with nothing near it,
+   where this has a shackle sitting on a body whose hole is about four units
+   across. The weight was chosen by rendering 1.6, 1.4 and 1.25 at the real
+   13 px beside the × and the chevron rather than by eye at full size -- at
+   1.6 the body fills in and the whole mark reads as a lump, which is invisible
+   when the same drawing is looked at four times over.
+
+   The open one lifts the shackle and takes its right leg off the body, so the
+   two are told apart by shape before colour -- the closed one is also drawn in
+   darker ink, but a state that needs the colour read to be understood is a
+   state somebody gets wrong in a screenshot. */
+const LOCK_SHUT =
+  '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+  '<path d="M5.7 6.9V5a2.3 2.3 0 0 1 4.6 0v1.9" stroke="currentColor"' +
+  ' stroke-width="1.4" stroke-linecap="round"/>' +
+  '<rect x="3.3" y="6.9" width="9.4" height="6.7" rx="1.5"' +
+  ' stroke="currentColor" stroke-width="1.4"/></svg>';
+
+const LOCK_OPEN =
+  '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+  '<path d="M5.7 6.9V5a2.3 2.3 0 0 1 4.6 0" stroke="currentColor"' +
+  ' stroke-width="1.4" stroke-linecap="round"/>' +
+  '<rect x="3.3" y="6.9" width="9.4" height="6.7" rx="1.5"' +
+  ' stroke="currentColor" stroke-width="1.4"/></svg>';
 
 function card(rel, item, ri, ii) {
   const d = el("div", "card" + (item.done ? " done" : ""));
