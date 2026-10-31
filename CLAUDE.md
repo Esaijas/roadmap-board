@@ -1,102 +1,114 @@
-# Pure planner — the deployment
+# Pure planner — standing rules
 
-This repository is **not** where the planner is written. It holds one file and
-exists so GitHub Pages can serve it.
+A kanban board for a release plan, in one HTML file. No build step, no
+dependencies, no CDN, no framework, no server. It talks to `api.github.com`
+and nothing else. `README.md` says what it does; this says what keeps getting
+decided wrongly.
 
-    source      Esaijas/Plain_tracker
-                docs/roadmap/pure-planner.html
-                branch claude/sports-tracking-android-app-4a05m1
+**This repository is the whole of it.** It came out of Pure Tracker's
+repository the first time a second project connected to it, which was the
+trigger written down when it was put there.
 
-    deployment  Esaijas/roadmap-board
-                index.html
-                served at https://esaijas.github.io/roadmap-board/
+## The file you edit is the file being served
 
-The whole job of a session here is to carry the first into the second.
+`index.html` is the source **and** the deployment: GitHub Pages serves this
+repository at `https://esaijas.github.io/roadmap-board/`, so a push is a
+release to everybody using it. There is no staging copy and nothing to upload.
 
-## Never edit `index.html` here
+That is the good shape and it has one cost worth naming: **a regression here is
+a regression on every project at once**, within a reload. There is no project
+that gets it later and could have warned the others. So the tests run before
+the push, every time, not after.
 
-A fix made in this repository is lost the next time the planner is synced, and
-lost **silently** — the sync is a copy, so it overwrites without a conflict and
-nothing anywhere says a change was dropped. Every change goes in the source
-repository, where the tests and the local checks are.
+    node pure-planner-test.js
+    node pure-planner-connections-test.js
 
-If something is wrong with the board and the source cannot be reached, say so
-and stop. Do not patch the deployed copy "just this once".
+They read this file and evaluate the real functions out of it rather than
+holding a copy — a copy passes while the page is broken, which is the only
+outcome worse than no test.
 
-## It has to be called `index.html`
+## Bump the version in the same commit as the change
 
-Pages serves a directory listing otherwise, and the URL above shows a file
-browser rather than the board. The source keeps its own name, where
-`pure-planner.html` is what distinguishes it from a README and a config file;
-the copy here is renamed on the way in.
+⚙ Settings carries `const VERSION = "v31 · 2026-10-31"`, with a copy button.
+**A stale deployment and a current one are indistinguishable from outside**:
+the URL works either way, the board draws either way, and the only answer is
+that string. There is no build step to bump it for you, which is the price of
+having no build step.
 
-## The version is how anybody knows the sync happened
+The question to ask when diagnosing anything is never "does the URL work" but
+"what does ⚙ Settings say". v23 was once live for days while v24 sat
+undeployed carrying the fix for a bug that had already fired on the real
+board.
 
-⚙ Settings in the board carries a build string — `v31 · 2026-10-31` — with a
-copy button beside it. **A stale deployment and a current one look identical
-from outside**: the URL works either way, the board draws either way. The
-version is the only answer.
+## One deployment, many projects — and one browser, many tabs
 
-So a sync is finished when the version in the committed `index.html` is newer
-than the one it replaced. Check it:
+Every project connects to this same page; what differs is the repository it
+reads. So the projects already share a version and always did.
 
-    grep -o 'const VERSION = "[^"]*"' index.html
+**A tab holds its own project and the browser holds the list.** The project a
+tab is showing lives in `sessionStorage`, which is per tab; the projects and
+their tokens live in `localStorage`, which is per origin. Keeping the first in
+the second is the v31 bug: two tabs for two projects both ended up on the same
+one. And a tab that writes the project list back whole deletes whatever
+another tab added — tokens included, from a page that cannot show a token
+twice — so every write re-reads and merges.
 
-**If the source's version is the same as the deployed one, the sync is not
-done — the source was not bumped.** That is a finding to report, not a reason
-to push anyway. A deployment whose version matches the previous one is
-indistinguishable from one that never happened, which has already cost a
-diagnosis: v23 was live for days while v24 sat in the source repository
-carrying the fix for a bug that had already fired on the real board.
+**`localStorage` is per origin, so a copy opened off disk and the Pages one
+know nothing about each other.** Each wants its own token. That is a feature
+rather than a fault: one token per machine means a lost laptop is one token to
+revoke.
 
-## This repository is public, and that is load-bearing
+## The digest is a contract with every project that stamps a plan
 
-Free-tier Pages will not serve a private repository, so making it private
-takes the board offline. If it is ever made private, the URL stops working
-and the answer is either GitHub Pro or running the file off disk — not a
-workaround here.
+`planSignature` computes what goes in a release's `planned` field, and the
+board reads it back to decide whether a column says *Plan* or *Replan*. A
+project whose own tooling writes a stamp — Pure Tracker's `tools/planstamp.py`
+does — has a second implementation of this hash, in another language, in
+another repository.
 
-## Nothing else goes in here
+**This one is the authority.** Where they differ, the other is wrong.
 
-No plan, no `roadmap.json`, no release documents, no notes. `Plain_tracker` is
-**private**, and this repository is public: anything copied across is
-published to the open web permanently, and git does not forget. The only file
-that crosses is the planner itself, which is a tool and carries nothing about
-any project.
+So: a change to `planSignature` regenerates `digest-vectors.json` and has to be
+carried to every project that stamps. They check themselves against it and
+fail loudly until it arrives.
 
-The config file (`pure-planner-config.json`) does not belong here either. It
-names a repository and is meant to be passed around, but it belongs with the
-project it describes.
+The vectors exist because the two had already drifted, silently, for months:
+`charCodeAt` reads sixteen bits at a time, so a character outside the Basic
+Multilingual Plane is two iterations here and was one in the Python. Any
+ticket with an emoji in its title was unstampable and nothing said so.
 
-## No credential, ever
+## Nothing about any project belongs here
+
+No plan, no `roadmap.json`, no release documents, no config file naming a
+repository. This repository is **public** and the projects using it are not;
+anything copied across is published permanently and git does not forget.
+
+A config file (`pure-planner-config.json`) belongs with the project it
+describes. **It never carries a token** — it exists to be committed and passed
+around, and the token is per person and per device.
+
+## No credential, ever, and nothing that could want one
 
 The board takes a fine-grained token pasted by the person using it and keeps it
-in their browser's own storage. **Nothing in this repository may contain one**,
-and there is nothing here that could legitimately want one — no workflow, no
-build, no deploy key. The page is served as a static file and talks to
-`api.github.com` from the browser.
+in their own browser. There is no workflow here, no build, no deploy key, and
+no reason for any of them — Pages publishes on push.
 
-The test to apply is the one the source repository uses: *could a stranger
-reading this repository act as me?* It is public, so the answer must be no by
-construction.
+The test to apply: **could a stranger reading this repository act as me?** It
+is public, so the answer has to be no by construction.
 
-## No workflows
+## Public, and that is load-bearing
 
-There is no CI here and there should not be. Pages publishes on push, so **a
-push is the deploy** — there is nothing for a workflow to add, and a workflow
-in a repository whose whole content is one static file is a way for something
-to go wrong unattended.
+Free-tier Pages will not serve a private repository. Making this one private
+takes the board offline for every project at once; the answers are GitHub Pro
+or opening the file off disk, not a workaround.
 
-## What a sync looks like
+## Taking it into use on a new project
 
-1. Read the source file from `Plain_tracker`.
-2. Compare its `VERSION` with the one in `index.html` here. If they match,
-   stop and say so.
-3. Copy it over `index.html`, byte for byte. No reformatting, no tidying, no
-   "while I am here".
-4. Commit with the version in the message, e.g. `Deploy Pure planner v31`.
-5. Push, then say the URL and the version, and that ⚙ Settings is where to
-   confirm it. Pages takes a minute or two.
-
-The commit message takes no `[skip ci]` marker — there is no CI here, and the
-marker would only be confusing.
+1. Open the URL.
+2. Drop that project's `pure-planner-config.json` on the panel — it fills
+   owner, repository, branch, file and commit message.
+3. Paste a fine-grained token: **that repository only**, Contents read and
+   write, and **Repository access naming it**. That last control is above the
+   permission list, it defaults to *Public repositories*, and against a
+   private repository the default 404s every call while the permissions below
+   read exactly right. It cost an afternoon.

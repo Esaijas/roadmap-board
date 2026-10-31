@@ -1,0 +1,109 @@
+{
+  "note": "Generated from planSignature in pure-planner.html. The board is the authority; any tool that stamps a plan must agree with these exactly.",
+  "vectors": [
+    {
+      "name": "empty",
+      "items": [],
+      "digest": "811c9dc5"
+    },
+    {
+      "name": "one plain",
+      "items": [
+        {
+          "title": "A",
+          "body": "B"
+        }
+      ],
+      "digest": "3909ebf6"
+    },
+    {
+      "name": "missing body",
+      "items": [
+        {
+          "title": "A"
+        }
+      ],
+      "digest": "f059f1c4"
+    },
+    {
+      "name": "missing title",
+      "items": [
+        {
+          "body": "B"
+        }
+      ],
+      "digest": "16fc4fa7"
+    },
+    {
+      "name": "both absent",
+      "items": [
+        {}
+      ],
+      "digest": "117697cd"
+    },
+    {
+      "name": "order independent",
+      "items": [
+        {
+          "title": "b",
+          "body": "2"
+        },
+        {
+          "title": "a",
+          "body": "1"
+        }
+      ],
+      "digest": "d7f31a6c"
+    },
+    {
+      "name": "accents",
+      "items": [
+        {
+          "title": "Näytä kerrokset",
+          "body": "Porraskävely — nousu"
+        }
+      ],
+      "digest": "68ecdcb4"
+    },
+    {
+      "name": "emoji beyond the BMP",
+      "items": [
+        {
+          "title": "ok 🚴",
+          "body": "x"
+        }
+      ],
+      "digest": "c881f1f2"
+    },
+    {
+      "name": "newlines and tabs",
+      "items": [
+        {
+          "title": "a\nb\tc",
+          "body": "d\r\ne"
+        }
+      ],
+      "digest": "3815b2d8"
+    },
+    {
+      "name": "the separators themselves",
+      "items": [
+        {
+          "title": "a\u0000b",
+          "body": "c\u0001d"
+        }
+      ],
+      "digest": "06caa148"
+    },
+    {
+      "name": "long",
+      "items": [
+        {
+          "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "body": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+        }
+      ],
+      "digest": "bc7c995d"
+    }
+  ]
+}
