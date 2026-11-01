@@ -112,3 +112,30 @@ or opening the file off disk, not a workaround.
    permission list, it defaults to *Public repositories*, and against a
    private repository the default 404s every call while the permissions below
    read exactly right. It cost an afternoon.
+
+## Models and effort
+
+- The main session and the expert subagents (the agents in .claude/agents/)
+  use Opus.
+- Mechanical tasks go to general-purpose subagents running Sonnet: running
+  pipelines or scripts over full data, listing files, reading logs, fixing
+  failing tests.
+- Do not use Haiku or Fable.
+- Model routing: the lead chooses the model and reasoning effort for every
+  delegated task. Use this table:
+
+  | Kind of work | Model | Effort |
+  |---|---|---|
+  | Method design, architecture, validation design, reviews, decisions, anything customers or the owner see | Opus | high |
+  | Implementing a clearly specified work package with tests | Opus; Sonnet when the spec names files, functions and tests concretely | medium |
+  | Mechanical work: running pipelines, regenerating data, screenshots, reading logs, listing files, fixing failing tests | Sonnet | low or medium |
+  | Haiku, Fable | not used | – |
+
+- Every plan's work-package table has a "Model / effort" column, so the owner
+  can review and change the choice before the run.
+- Cost is driven more by context size than by model: give each subagent exact
+  file paths and a precise question, and let it read only what it needs.
+- Run long commands (full test suite, full-data runs) in the background or
+  with explicit timeouts, so an agent does not stall waiting on them.
+- Use this table instead of a separate "router" agent; a router would cost
+  more context than it saves.
