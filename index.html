@@ -899,7 +899,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v35 · 2026-11-01";
+const VERSION = "v36 · 2026-11-01";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
@@ -1234,7 +1234,11 @@ async function pull({ quiet = false } = {}) {
   sha = meta.sha;
   document.getElementById("title").textContent = DATA.title || cfg.repo;
   render();
-  say("loaded");
+  /* A plan edited somewhere else can arrive in a state the board must not
+     renumber; say so now rather than at the first drag. See `planFault`. */
+  const fault = planFault();
+  say(fault ? `${fault}. Until then the board will not renumber anything.`
+    : "loaded", !!fault);
   listNotes();
 }
 
@@ -2451,7 +2455,7 @@ function column(rel, ri) {
   const freeze = () => held && refuse(rel, "unlock it to edit");
 
   row.appendChild(editable(el("div", "cid", rel.id),
-    v => { rel.id = v; reflow(); }, "input", freeze));
+    v => { rel.id = v; reflow(); }, "input", () => freeze() || faulty()));
 
   /* The one control that stays live on a locked column, because it is the way
      out of being locked. */
@@ -2805,8 +2809,8 @@ function minorValue(minor, minors) {
   return parseFloat(`${m[0]}.${m.slice(1)}`);
 }
 
-function renumber() {
-  const parsed = DATA.releases.map(r => ({ rel: r, id: parseId(r.id) }));
+function renumber(list = DATA.releases) {
+  const parsed = list.map(r => ({ rel: r, id: parseId(r.id) }));
   if (!parsed.some(p => p.id)) return {};        // Spring, Summer, Autumn
 
   /* A major already partly shipped resumes above its highest shipped minor,
@@ -2958,6 +2962,92 @@ function rewriteReferences(renames) {
   return { moved: n, held };
 }
 
+/* ── a plan the board cannot put right by itself ───────────────────────── */
+
+/* **What would make a renumber wrong, said as a sentence -- or null.** The
+   board numbers every unbuilt release from where it sits, above everything
+   shipped, and nothing typed or dragged here can get under that. What can is
+   an edit to the plan file made somewhere else, because the board only meets
+   it at the next load and used to put it "right" on the next save, silently:
+
+   - **A release shipped out of turn.** R8.0 was marked shipped while two
+     unbuilt columns still sat to its left. The next save renamed them past it
+     -- days later, without a word -- and they kept their places, so the
+     shipped rail listed R8.0 after the R8.5 that followed it. Shipping the
+     next one out of turn, with a locked column still to its left, would have
+     renamed the column after it to a number below the one just shipped.
+   - **A release added in front of the locked one.** The next save gives it the
+     locked release's number, and the board draws two of them.
+
+   So the shipped history has to come first in the file, and a dry run of the
+   renumber -- on a copy -- has to come out with no duplicate and nothing
+   unbuilt at or below anything shipped. While it does not, the board refuses
+   anything that renumbers, and says what to change in the file; editing a
+   card's words renumbers nothing, so that stays open. */
+function planFault(list = DATA.releases) {
+  if (!list.some(r => parseId(r.id))) return null;   // Spring, Summer, Autumn
+  const open = list.findIndex(r => !r.shipped);
+  const late = open < 0 ? -1 : list.findIndex((r, i) => i > open && r.shipped);
+  if (late >= 0) {
+    return `${list[late].id} is shipped but ${list[open].id}, to its left, is not`
+      + ` — in the plan file, move ${list[late].id} to just after the last`
+      + ` shipped release`;
+  }
+
+  const after = list.map(r => ({ ...r }));
+  renumber(after);
+  const first = new Map();
+  for (let i = 0; i < after.length; i++) {
+    const id = String(after[i].id ?? "").trim();
+    if (!first.has(id)) { first.set(id, i); continue; }
+    /* Of the two, the one renumbering is the one whose name changed; when
+       neither did, the file already says the same thing twice. */
+    const j = first.get(id);
+    const was = k => String(list[k].id ?? "").trim();
+    if (was(i) === id && was(j) === id) {
+      return `two releases are called ${id} in the plan file — rename one`;
+    }
+    const moving = was(i) === id ? j : i, staying = moving === i ? j : i;
+    return `${list[moving].id} would be renumbered to ${id}, which`
+      + ` ${list[staying].id} already is — in the plan file, move`
+      + ` ${list[moving].id} to the right of it`;
+  }
+
+  /* Ordered by major, then by the minor as `minorValue` reads it, among the
+     minors the release's own major has. */
+  const minorsOf = {};
+  after.forEach(r => {
+    const id = parseId(r.id);
+    if (id) (minorsOf[id.major] ??= new Set()).add(String(id.minor));
+  });
+  const key = r => {
+    const id = parseId(r.id);
+    return id && [id.major, minorValue(id.minor, minorsOf[id.major])];
+  };
+  const below = (a, b) => a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]);
+  let top = null;
+  after.forEach(r => {
+    const k = r.shipped && key(r);
+    if (k && (!top || below(top.k, k))) top = { r, k };
+  });
+  if (!top) return null;
+  const low = after.find(r => !r.shipped && key(r) && below(key(r), top.k));
+  if (!low) return null;
+  return locked(low)
+    ? `${low.id} is locked, but ${top.r.id} has already shipped with a higher`
+      + ` number — ship ${low.id} or unlock it before anything is renumbered`
+    : `${low.id} would stay at or below ${top.r.id}, which has shipped`;
+}
+
+/* Says the fault and refuses, for the four things that renumber: an insert, a
+   delete, a column drag and an id typed on a column. */
+function faulty() {
+  const fault = planFault();
+  if (!fault) return false;
+  say(`${fault}. Until then the board will not renumber anything.`, true);
+  return true;
+}
+
 /* Renumber, move the references with it, and say what happened -- a number
    changing by itself is alarming unless something admits to doing it. */
 /* **A renumbering is not a replan**, and it takes one line to keep that true.
@@ -3004,6 +3094,7 @@ function nextId(index) {
 
 
 async function insertRelease(index) {
+  if (faulty()) return;
   /* **Inserting here would renumber the column being built.** Everything from
      this position rightwards shifts along and the ids follow position, so the
      release under construction would quietly become the next number up while
@@ -3045,6 +3136,7 @@ async function insertRelease(index) {
    exist, so "delete R1.6" and "delete four pieces of thinking" are the same
    action and the confirm should say so. */
 async function deleteRelease(ri) {
+  if (faulty()) return;
   const rel = DATA.releases[ri];
   /* Deleting the locked column, or anything left of it -- the second one
      renumbers it for the same reason an insert does. */
@@ -3193,6 +3285,7 @@ function onUp(e) {
      column itself cannot happen -- its row and head never get a pointerdown --
      but dragging another column from its left, or to its left, would renumber
      it. To its right, on both ends, is free. */
+  if (faulty()) { render(); return; }
   const across = wouldRenumberLocked(d.ref.ri) || wouldRenumberLocked(at);
   if (across) { refuse(across, "move columns to the right of it, or unlock it"); render(); return; }
   const rel = DATA.releases.splice(d.ref.ri, 1)[0];

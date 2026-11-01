@@ -65,7 +65,7 @@ const renumber = eval("(function () {\n" + [
   lift("parseId", "function parseId(id) {"),
   lift("locked", "function locked(rel) {"),
   lift("minorValue", "function minorValue(minor, minors) {"),
-  lift("renumber", "function renumber() {"),
+  lift("renumber", "function renumber(list = DATA.releases) {"),
 ].join("\n") + "\nreturn renumber;\n})()");
 const number = d => { DATA = d; return renumber(); };
 const ids = d => d.releases.map(r => r.id);
@@ -283,6 +283,47 @@ const shipped = id => rel(id, { shipped: true });
         ids(d), ["R0.9", "R0.10", "R0.11"]);
 }
 
+// ── a plan the board must not renumber ──────────────────────────────────────
+//
+// `planFault` is what stops the board putting an out-of-turn edit "right" on
+// its next save. Lifted with everything it leans on, so a change to any of
+// them reaches this file. Every case is a real way a plan file got, or could
+// get, into that state from outside the board.
+// eslint-disable-next-line no-eval
+const planFault = eval("(function () {\n" + [
+  liftConst("ID_RE"),
+  lift("parseId", "function parseId(id) {"),
+  lift("locked", "function locked(rel) {"),
+  lift("minorValue", "function minorValue(minor, minors) {"),
+  lift("renumber", "function renumber(list = DATA.releases) {"),
+  lift("planFault", "function planFault(list = DATA.releases) {"),
+].join("\n") + "\nreturn planFault;\n})()");
+{
+  check("a plan shipped in order is fine",
+        planFault([shipped("R8.0"), shipped("R8.1"), rel("R8.2", { locked: true }), rel("R9.0")]), null);
+  check("a board with nothing numbered is fine",
+        planFault([rel("Spring"), rel("Summer", { shipped: true }), rel("Autumn")]), null);
+  check("a shipped R0.10 followed by R0.11 is fine",
+        planFault([shipped("R0.9"), shipped("R0.10"), rel("R0.11"), rel("R1.0")]), null);
+  check("a release shipped out of turn is named, with what to move",
+        planFault([shipped("R6.1"), rel("R6.2"), rel("R7.0"), shipped("R8.0"), rel("R8.1")]),
+        "R8.0 is shipped but R6.2, to its left, is not — in the plan file, move R8.0 to"
+        + " just after the last shipped release");
+  check("a release added in front of the locked one would take its number",
+        planFault([shipped("R8.5"), rel("R8.2"), rel("R8.6", { locked: true }), rel("R9.0")]),
+        "R8.2 would be renumbered to R8.6, which R8.6 already is — in the plan file,"
+        + " move R8.2 to the right of it");
+  check("a locked release passed by a shipped one is said, not renumbered",
+        planFault([shipped("R8.5"), shipped("R9.0"), rel("R8.6", { locked: true }), rel("R9.1")]),
+        "R8.6 is locked, but R9.0 has already shipped with a higher number — ship R8.6"
+        + " or unlock it before anything is renumbered");
+  check("two shipped releases with one name are said",
+        planFault([shipped("R4.0"), shipped("R4.0"), rel("R4.1")]),
+        "two releases are called R4.0 in the plan file — rename one");
+  check("a stale number the board can fix is not a fault",
+        planFault([shipped("R8.5"), rel("R3.0"), rel("R3.1")]), null);
+}
+
 // ── where a shipped release's notes are ─────────────────────────────────────
 //
 // `notesPattern` and `notesFind` decide which rows in the rail open something,
@@ -337,3 +378,4 @@ if (problems.length) process.exit(1);
 console.log("a shipped number and a bare number are both left alone");
 console.log("a locked release keeps its number, and nothing else takes it");
 console.log("release notes open only where the plan says, and only as a PDF");
+console.log("nothing unbuilt is numbered at or below a shipped release");

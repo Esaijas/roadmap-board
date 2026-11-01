@@ -224,6 +224,23 @@ the left of it**; everything to its right stays free. Clear it by clicking the
 padlock again, or let shipping clear it — `shipped` freezes an id for good, so
 the normal path needs no housekeeping.
 
+**Ship in board order.** `shipped` is set in the file, never by the board, so
+the board meets a release shipped out of turn only at its next load. Since v36
+it checks every plan it loads, and refuses inserts, deletes, column drags and
+typed ids — anything that renumbers — while the file is in a state a renumber
+would get wrong, saying what to change instead of quietly "fixing" it on the
+next save:
+
+- **A shipped release with an unbuilt one to its left.** Move the shipped one
+  to just after the last shipped release; the shipped history always comes
+  first, which is also the order the shipped rail lists it in.
+- **A release that would be renumbered onto another's number** — one added in
+  front of the locked column, say.
+- **A locked release numbered below one that has shipped.** Ship it or unlock
+  it first.
+
+Editing a card's words and ticking items renumber nothing, so they stay open.
+
 It is in the file rather than in the browser so that whoever is doing the
 implementing can see it too. **It binds the board, not the file**: a run still
 has to write that release's document and mark it shipped, so this is a seatbelt
