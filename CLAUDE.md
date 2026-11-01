@@ -128,7 +128,7 @@ or opening the file off disk, not a workaround.
   |---|---|---|
   | Method design, architecture, validation design, reviews, decisions, anything customers or the owner see | Opus | high |
   | Implementing a clearly specified work package with tests | Opus; Sonnet when the spec names files, functions and tests concretely | medium |
-  | Mechanical work: running pipelines, regenerating data, screenshots, reading logs, listing files, fixing failing tests | Sonnet | low or medium |
+  | Mechanical work: running pipelines, regenerating data, screenshots, reading logs, listing files | Sonnet | low or medium |
   | Haiku, Fable | not used | – |
 
 - **Fixing a failing test is not mechanical work in this repository.** The
