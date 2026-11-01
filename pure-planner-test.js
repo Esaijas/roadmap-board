@@ -227,25 +227,50 @@ const queue = () => ({ releases: [
 
 // ── where a shipped release's notes are ─────────────────────────────────────
 //
-// `notesPlace` decides which rows in the rail open something, and what. Lifted
-// like the rest. The cases that matter are the ones that must come back null:
-// a row is clickable only when this says where the file is.
+// `notesPattern` and `notesFind` decide which rows in the rail open something,
+// and what. Lifted like the rest. The cases that matter most are the ones that
+// must come back null: a row is clickable only when these say where the file
+// is. The names below are made up -- no project's own naming belongs here.
 // eslint-disable-next-line no-eval
-const notesPlace = eval(`(${lift("notesPlace", "function notesPlace(pattern, id) {")})`);
+const { notesPattern, notesFind } = eval("(function () {\n" + [
+  lift("notesPattern", "function notesPattern(pattern) {"),
+  lift("notesFind", "function notesFind(pattern, id, names) {"),
+].join("\n") + "\nreturn { notesPattern, notesFind };\n})()");
 {
-  check("the plan's pattern names the file for an id",
-        notesPlace("docs/releases/{id}.pdf", "R1.05"),
+  const dated = "docs/notes/Sample App {id} release notes *.pdf";
+  const folder = [
+    "R0.6.md",
+    "Sample App R0.6 release notes 31-10-2026.pdf",
+    "Sample App R0.6.1 release notes 02-11-2026.pdf",
+  ];
+  check("a name built from the id alone is found",
+        notesFind("docs/releases/{id}.pdf", "R1.05", ["R1.04.md", "R1.05.pdf"]),
         { dir: "docs/releases", name: "R1.05.pdf", path: "docs/releases/R1.05.pdf" });
+  check("a date the board cannot know is matched by *",
+        notesFind(dated, "R0.6", folder),
+        { dir: "docs/notes", name: "Sample App R0.6 release notes 31-10-2026.pdf",
+          path: "docs/notes/Sample App R0.6 release notes 31-10-2026.pdf" });
+  check("R0.6.1 gets its own file",
+        notesFind(dated, "R0.6.1", folder).name,
+        "Sample App R0.6.1 release notes 02-11-2026.pdf");
+  check("R0.6 does not take R0.6.1's file when its own is missing",
+        notesFind(dated, "R0.6", folder.slice(2)), null);
+  check("the id is matched literally -- its dot is not a wildcard",
+        notesFind(dated, "R0.6", ["Sample App R0x6 release notes 31-10-2026.pdf"]), null);
+  check("a release with no file opens nothing",
+        notesFind(dated, "R0.5", folder), null);
   check("a plan without a pattern opens nothing",
-        notesPlace(undefined, "R1.05"), null);
+        notesFind(undefined, "R1.05", ["R1.05.pdf"]), null);
   check("{id} in the folder is refused, so one listing covers every release",
-        notesPlace("docs/{id}/notes.pdf", "R1.05"), null);
+        notesPattern("docs/{id}/notes.pdf"), null);
+  check("* in the folder is refused for the same reason",
+        notesPattern("docs/*/{id}.pdf"), null);
   check("anything but a PDF is refused -- it would open as this page's origin",
-        notesPlace("docs/releases/{id}.html", "R1.05"), null);
+        notesPattern("docs/releases/{id}.html"), null);
   check("a leading slash and the repository root both work",
-        notesPlace("/{id}.pdf", "R2"), { dir: "", name: "R2.pdf", path: "R2.pdf" });
+        notesFind("/{id}.pdf", "R2", ["R2.pdf"]), { dir: "", name: "R2.pdf", path: "R2.pdf" });
   check("an id with a slash in it cannot reach into another folder",
-        notesPlace("docs/releases/{id}.pdf", "R1/../secret"), null);
+        notesFind("docs/releases/{id}.pdf", "R1/../secret", ["R1/../secret.pdf"]), null);
 }
 
 console.log(`${pass + problems.length} checks against the page's own functions`);

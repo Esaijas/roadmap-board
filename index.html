@@ -899,7 +899,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v33 · 2026-11-01";
+const VERSION = "v34 · 2026-11-01";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
@@ -2107,8 +2107,8 @@ function renderShipped() {
     row.appendChild(el("span", "railtick", "✓"));
     row.appendChild(el("span", "railid", rel.id));
     row.appendChild(el("span", "railq", rel.question || ""));
-    const place = have && notesPlace(DATA.releaseNotes, rel.id);
-    if (place && have.has(place.name)) {
+    const place = have && notesFind(DATA.releaseNotes, rel.id, have);
+    if (place) {
       row.classList.add("notes");
       row.tabIndex = 0;
       row.setAttribute("role", "link");
@@ -2127,13 +2127,17 @@ function renderShipped() {
 
 /* **Where a release's notes live is the plan's to say, not this file's.** One
    pattern at the top of the plan -- `"releaseNotes": "docs/releases/{id}.pdf"`
-   -- because a path compiled in here would be one project's habit in every
-   project's board. A plan without it makes no extra request and draws the
-   rail exactly as before.
+   -- because a folder or a naming habit compiled in here would be one
+   project's habit in every project's board. A plan without it makes no extra
+   request and draws the rail exactly as before.
 
-   `{id}` goes in the file name and nowhere else, so that the folder is one
-   folder: it is listed once per load, and only a release whose file is
-   actually there becomes clickable. A row that opens "not found" is a control
+   The pattern is a folder and a file name. The folder is literal, and listed
+   once per load. The name has `{id}`, matched against the release id exactly,
+   and may have `*` for any part the board cannot know -- **a release date is
+   the case that needed it**: a name like `Notes {id} *.pdf` carries the date
+   the notes were written, which nothing on the board records, so the file is
+   *found in the listing* rather than built. Only a release whose file is
+   actually there becomes clickable; a row that opens "not found" is a control
    that looks live and is not.
 
    **PDF only.** The file is shown from a `blob:` URL, which belongs to this
@@ -2141,17 +2145,35 @@ function renderShipped() {
    the browser's viewer, which runs nothing as this page; a file in a format
    the browser would render itself is not something to open here, so the
    pattern has to end in `.pdf` or the feature is off. */
-function notesPlace(pattern, id) {
-  if (typeof pattern !== "string" || id === undefined || id === null) return null;
+function notesPattern(pattern) {
+  if (typeof pattern !== "string") return null;
   const p = pattern.trim().replace(/^\/+/, "");
   const cut = p.lastIndexOf("/");                      // -1: the repository root
   const dir = cut < 0 ? "" : p.slice(0, cut);
   const file = p.slice(cut + 1);
-  if (!file.includes("{id}") || dir.includes("{id}")) return null;
+  if (!file.includes("{id}") || dir.includes("{id}") || dir.includes("*")) return null;
   if (!/\.pdf$/i.test(file)) return null;
-  const name = file.split("{id}").join(String(id).trim());
-  if (!name || name.includes("/")) return null;
-  return { dir, name, path: dir ? `${dir}/${name}` : name };
+  return { dir, file };
+}
+
+/* The notes file for one release among the folder's `names`, or null. The id
+   is escaped before it goes into the expression, so `R0.6` matches a dot and
+   nothing else -- and with literal text after `{id}`, as any sensible name has,
+   R0.6 cannot take R0.6.1's file. **More than one match takes the first in the
+   listing**, which GitHub returns sorted; a project keeps one file per
+   release, and a stray second one is its tidying to do, not a reason to show
+   nothing. */
+function notesFind(pattern, id, names) {
+  const pat = notesPattern(pattern);
+  if (!pat || id === undefined || id === null || !names) return null;
+  const want = String(id).trim();
+  if (!want || want.includes("/")) return null;
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp("^" + pat.file.split("{id}")
+    .map(part => part.split("*").map(esc).join("[^/]*"))
+    .join(esc(want)) + "$");
+  const name = [...names].find(n => re.test(n));
+  return name ? { dir: pat.dir, name, path: pat.dir ? `${pat.dir}/${name}` : name } : null;
 }
 
 /* The contents path of any file or folder in the plan's repository. Each
@@ -2165,15 +2187,15 @@ function contentsAt(path) {
 
 async function listNotes() {
   const forData = DATA;
-  const place = notesPlace(DATA.releaseNotes, "_");
-  if (!place) return;
+  const pat = notesPattern(DATA.releaseNotes);
+  if (!pat) return;
   let names;
   try {
-    const res = await api(contentsAt(place.dir));
+    const res = await api(contentsAt(pat.dir));
     if (!res.ok) return;          // no folder yet: then nothing is clickable
     const list = await res.json();
     if (!Array.isArray(list)) return;              // the "folder" is a file
-    names = new Set(list.filter(f => f.type === "file").map(f => f.name));
+    names = list.filter(f => f.type === "file").map(f => f.name);
   } catch { return; }             // offline or refused: the rail is unchanged
   if (DATA !== forData) return;
   notesHave = names;

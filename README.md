@@ -229,14 +229,33 @@ implementing can see it too. **It binds the board, not the file**: a run still
 has to write that release's document and mark it shipped, so this is a seatbelt
 against an accidental drag rather than a vault.
 
-`releaseNotes` says where a shipped release's notes are, as a path in the same
-repository with `{id}` where the release id goes. **A row in the shipped rail
-whose file is there opens it** in a new tab, read through the API with the same
-token as the plan, so it works for a private repository and for anybody who can
-use the board. Rows without a file stay as they were, and a plan without the
-field makes no extra request. `{id}` goes in the file name only — the folder is
-listed once per load to find out which rows have notes — and the file has to be
-a PDF.
+`releaseNotes` says where a shipped release's notes are: a folder in the same
+repository, then a file-name pattern with `{id}` where the release id goes and
+`*` for any part the board cannot know, such as the date the notes were
+written:
+
+```jsonc
+"releaseNotes": "docs/releases/{id}.pdf"                   // R1.05.pdf
+"releaseNotes": "docs/notes/My App {id} release notes *.pdf" // …R1.05 release notes 31-10-2026.pdf
+```
+
+The board lists that folder once per load and looks each shipped release up in
+it. **A row in the shipped rail whose file is there opens it** in a new tab,
+read through the API with the same token as the plan, so it works for a private
+repository and for anybody who can use the board. Rows without a file stay as
+they were, and a plan without the field makes no extra request.
+
+The rules, so a pattern does what it looks like it does:
+
+- **The folder is literal** — no `{id}` or `*` before the last `/` — because it
+  is listed once rather than searched.
+- **`{id}` matches the release id exactly**, dots and all. Keep some literal
+  text between `{id}` and a `*`, so R0.6 cannot match R0.6.1's file.
+- **It has to be a PDF.** The pattern must end in `.pdf`.
+- **One file per release.** If two match, the first in the folder's
+  alphabetical listing is opened.
+- The folder is read on **the plan's own branch**, so notes on another branch
+  appear once they are merged.
 
 ## What it does
 
