@@ -131,6 +131,12 @@ or opening the file off disk, not a workaround.
   | Mechanical work: running pipelines, regenerating data, screenshots, reading logs, listing files, fixing failing tests | Sonnet | low or medium |
   | Haiku, Fable | not used | – |
 
+- **Fixing a failing test is not mechanical work in this repository.** The
+  tests evaluate the page's own functions, so a red test almost always means
+  `index.html` is broken — on every project at once, within a reload. Route
+  it as a change to the page (Opus), not as mechanical work, and fix the page
+  rather than the test: a test edited until it passes is the copy that passes
+  while the page is broken.
 - Every plan's work-package table has a "Model / effort" column, so the owner
   can review and change the choice before the run.
 - Cost is driven more by context size than by model: give each subagent exact
