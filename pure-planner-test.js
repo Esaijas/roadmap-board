@@ -64,6 +64,7 @@ const renumber = eval("(function () {\n" + [
   liftConst("ID_RE"),
   lift("parseId", "function parseId(id) {"),
   lift("locked", "function locked(rel) {"),
+  lift("minorValue", "function minorValue(minor, minors) {"),
   lift("renumber", "function renumber() {"),
 ].join("\n") + "\nreturn renumber;\n})()");
 const number = d => { DATA = d; return renumber(); };
@@ -223,6 +224,63 @@ const queue = () => ({ releases: [
         d.releases[0].id, "R8.0");
   check("and the queue behind it still starts where it should",
         d.releases[1].id, "R8.1");
+}
+
+// ── what a shipped minor is worth ───────────────────────────────────────────
+//
+// The board counts minors as whole numbers -- R0.9, R0.10, R0.11 -- and used to
+// *read* a shipped two-digit minor as a decimal, so a shipped R0.10 counted as
+// 1.0, below R0.9, and the next column was handed R0.10 again. The old decimal
+// ids still have to keep their place: R1.05 between R1.0 and R1.1, R0.85
+// between R0.8 and R0.9.
+const rel = (id, more = {}) => ({ id, prose: "", gate: "", items: [], ...more });
+const shipped = id => rel(id, { shipped: true });
+{
+  const d = { releases: [shipped("R0.8"), shipped("R0.9"), shipped("R0.10"), rel("R0.11")] };
+  number(d);
+  check("after a shipped R0.10 comes R0.11, not a second R0.10",
+        ids(d), ["R0.8", "R0.9", "R0.10", "R0.11"]);
+}
+{
+  const d = { releases: [shipped("R0.9"), rel("R0.10"), rel("R0.11")] };
+  number(d);
+  check("an unbuilt R0.10 after a shipped R0.9 keeps its number",
+        ids(d), ["R0.9", "R0.10", "R0.11"]);
+}
+// Counting on, one shipped release at a time, as far as anybody will go.
+{
+  const got = [], want = [];
+  for (let n = 1; n <= 25; n++) {
+    const d = { releases: [] };
+    for (let k = 0; k < n; k++) d.releases.push(shipped(`R3.${k}`));
+    d.releases.push(rel("R3.99"));
+    number(d);
+    got.push(d.releases[n].id); want.push(`R3.${n}`);
+  }
+  check("shipping R3.0 to R3.24 in turn, the next one is always one more", got, want);
+}
+{
+  const d = { releases: [shipped("R1.0"), shipped("R1.05"), rel("R1.7")] };
+  number(d);
+  check("an old decimal id keeps its place: after R1.0 and R1.05 comes R1.1",
+        d.releases[2].id, "R1.1");
+}
+{
+  const d = { releases: [shipped("R0.8"), shipped("R0.85"), shipped("R0.9"), rel("R0.4")] };
+  number(d);
+  check("R0.85 sits between R0.8 and R0.9, so the next is R0.10",
+        d.releases[3].id, "R0.10");
+}
+{
+  const d = { releases: [shipped("R2.0"), shipped("R2.1"), rel("R2.9")] };
+  number(d);
+  check("a plain R2.1 is one, not a tenth: the next is R2.2", d.releases[2].id, "R2.2");
+}
+{
+  const d = { releases: [shipped("R0.9"), rel("R0.10", { locked: true }), rel("R0.5")] };
+  number(d);
+  check("a locked R0.10 keeps its number and the next column is R0.11",
+        ids(d), ["R0.9", "R0.10", "R0.11"]);
 }
 
 // ── where a shipped release's notes are ─────────────────────────────────────

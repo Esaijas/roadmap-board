@@ -339,6 +339,13 @@ It is unambiguous — ids are labels in a fixed order, not decimals to compare �
 but if it bothers you, the fix is to open a new major earlier rather than to
 change the numbering.
 
+**Until v35 the board itself disagreed** once such a release shipped: it read a
+shipped `R0.10` as 1.0, below `R0.9`, and handed the next column `R0.10` again.
+Now a two-digit minor is a count when the number below it is there too
+(`R0.9` under `R0.10`), and the decimal it used to be otherwise — so ids from
+before the board counted keep their place: `R1.05` sits between `R1.0` and
+`R1.1`, and `R0.85` between `R0.8` and `R0.9`.
+
 ## Two-way editing
 
 `roadmap.json` is the one record. **Saving is debounced** a few seconds after

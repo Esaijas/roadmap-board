@@ -899,7 +899,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v34 · 2026-11-01";
+const VERSION = "v35 · 2026-11-01";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
@@ -2783,6 +2783,28 @@ function parseId(id) {
   return { prefix: m[1], major: parseInt(m[2], 10), minor: m[3] ?? "0" };
 }
 
+/* **Where a minor sits on the counting line.** Two kinds of id share the
+   notation and mean different things by a second digit:
+
+   - The board counts whole numbers: after R0.9 it hands out R0.10, R0.11.
+   - Ids from before it counted were decimals squeezed between two others:
+     R1.05 between R1.0 and R1.1, R0.85 between R0.8 and R0.9.
+
+   **A minor is a whole number when the board could have counted to it** --
+   when the number one below it is also a minor of the same major, the way
+   R0.9 sits under R0.10 and R0.10 under R0.11. Otherwise a second digit is a
+   fraction: R0.85 has no R0.84 beneath it, and a leading zero, as in R1.05, is
+   never a count. One digit is always itself.
+
+   Nothing reads the id alone, because nothing in the id alone can tell R0.10
+   counted from R0.10 squeezed -- the release next to it can. */
+function minorValue(minor, minors) {
+  const m = String(minor);
+  if (m.length < 2) return Number(m);
+  if (m[0] !== "0" && minors && minors.has(String(Number(m) - 1))) return Number(m);
+  return parseFloat(`${m[0]}.${m.slice(1)}`);
+}
+
 function renumber() {
   const parsed = DATA.releases.map(r => ({ rel: r, id: parseId(r.id) }));
   if (!parsed.some(p => p.id)) return {};        // Spring, Summer, Autumn
@@ -2802,14 +2824,22 @@ function renumber() {
      through the other door.
 
      It became reachable the day R2.1 shipped, in one click: inserting a column
-     after it proposes R2.2, and this is what decides what R2.2 becomes. */
+     after it proposes R2.2, and this is what decides what R2.2 becomes.
+
+     **And the counting below makes two-digit minors of its own**: after R0.9
+     it hands out R0.10, which the decimal reading took for 1.0 -- below R0.9 --
+     so once R0.10 shipped, the next column was handed R0.10 again. Which
+     reading a minor gets is now `minorValue`'s to decide, from its neighbours. */
+  const minorsOf = {};
+  parsed.forEach(({ id }) => {
+    if (id) (minorsOf[id.major] ??= new Set()).add(String(id.minor));
+  });
+  const valueOf = id => minorValue(id.minor, minorsOf[id.major]);
   const shippedTop = {};
   let lastShipped = null;
   parsed.forEach(({ rel, id }) => {
     if (!rel.shipped || !id) return;
-    const m = String(id.minor);
-    const v = parseFloat(m.length > 1 ? `${m[0]}.${m.slice(1)}` : m);
-    shippedTop[id.major] = Math.max(shippedTop[id.major] ?? -1, v);
+    shippedTop[id.major] = Math.max(shippedTop[id.major] ?? -1, valueOf(id));
     lastShipped = Math.max(lastShipped ?? id.major, id.major);
   });
 
@@ -2849,7 +2879,7 @@ function renumber() {
        duplicate instead of preventing it. */
     if (locked(rel)) {
       major = id.major;
-      next = Number(id.minor) + 1;
+      next = Math.floor(valueOf(id)) + 1;
       return;
     }
     if (major === null) {
