@@ -420,6 +420,19 @@ button.quiet:hover { color: var(--danger); border-color: var(--line2); }
   color: var(--ink2); line-height: 1.5; font-variant-numeric: tabular-nums;
 }
 .railq { flex: 1; color: var(--ink3); }
+/* A shipped release whose notes are in the repository. **The whole row is the
+   target** -- the id alone is 42 px of small type -- and it carries a tag as
+   well as a hover, because in a list where some rows open something and some
+   do not, the difference has to show before the pointer gets there. */
+.railrow.notes { cursor: pointer; }
+.railrow.notes:hover { background: var(--card); }
+.railrow.notes:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.railpdf {
+  flex: 0 0 auto; margin-top: 2px; padding: 0 4px; border-radius: 4px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .06em; line-height: 1.5;
+  color: var(--ink3); border: 1px solid var(--line2);
+}
+.railrow.notes:hover .railpdf { color: var(--accent); border-color: var(--accent); }
 
 @media (max-width: 700px) { #shipped { flex-basis: 190px; } }
 
@@ -848,6 +861,16 @@ textarea { font-size: 12.5px; }
    item ids and no foreign keys that can fall out of step. */
 let DATA = { title: "", releases: [] };
 
+/* What is in the release notes folder, and **which plan it was listed for**
+   (see `listNotes`). Keyed on the `DATA` object itself rather than on a
+   project name, because every load and every switch replaces that object --
+   so an answer that arrives after the board has moved on can never be drawn
+   against the wrong project. Up here rather than beside `listNotes`, because
+   `renderShipped` reads them and the first render runs long before the script
+   reaches that far down. */
+let notesHave = null;
+let notesFor = null;
+
 /* ── the project it is connected to ────────────────────────────────────── */
 
 /* Everything about *which* project lives here, in the browser, never in the
@@ -876,7 +899,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v32 · 2026-10-31";
+const VERSION = "v33 · 2026-11-01";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
@@ -1212,6 +1235,7 @@ async function pull({ quiet = false } = {}) {
   document.getElementById("title").textContent = DATA.title || cfg.repo;
   render();
   say("loaded");
+  listNotes();
 }
 
 /* Debounced, so the window in which two people can clash is the seconds since
@@ -2077,13 +2101,125 @@ function renderShipped() {
     list.appendChild(el("div", "railq", "Nothing shipped yet."));
     return;
   }
+  const have = notesFor === DATA ? notesHave : null;
   done.forEach(rel => {
     const row = el("div", "railrow");
     row.appendChild(el("span", "railtick", "✓"));
     row.appendChild(el("span", "railid", rel.id));
     row.appendChild(el("span", "railq", rel.question || ""));
+    const place = have && notesPlace(DATA.releaseNotes, rel.id);
+    if (place && have.has(place.name)) {
+      row.classList.add("notes");
+      row.tabIndex = 0;
+      row.setAttribute("role", "link");
+      row.title = `Open the ${rel.id} release notes — ${place.path}`;
+      row.appendChild(el("span", "railpdf", "PDF"));
+      row.onclick = () => openNotes(rel, place);
+      row.onkeydown = e => {
+        if (e.key === "Enter") { e.preventDefault(); openNotes(rel, place); }
+      };
+    }
     list.appendChild(row);
   });
+}
+
+/* ── release notes, from the rail ──────────────────────────────────────── */
+
+/* **Where a release's notes live is the plan's to say, not this file's.** One
+   pattern at the top of the plan -- `"releaseNotes": "docs/releases/{id}.pdf"`
+   -- because a path compiled in here would be one project's habit in every
+   project's board. A plan without it makes no extra request and draws the
+   rail exactly as before.
+
+   `{id}` goes in the file name and nowhere else, so that the folder is one
+   folder: it is listed once per load, and only a release whose file is
+   actually there becomes clickable. A row that opens "not found" is a control
+   that looks live and is not.
+
+   **PDF only.** The file is shown from a `blob:` URL, which belongs to this
+   page's origin -- the one holding every project's token. A PDF is drawn by
+   the browser's viewer, which runs nothing as this page; a file in a format
+   the browser would render itself is not something to open here, so the
+   pattern has to end in `.pdf` or the feature is off. */
+function notesPlace(pattern, id) {
+  if (typeof pattern !== "string" || id === undefined || id === null) return null;
+  const p = pattern.trim().replace(/^\/+/, "");
+  const cut = p.lastIndexOf("/");                      // -1: the repository root
+  const dir = cut < 0 ? "" : p.slice(0, cut);
+  const file = p.slice(cut + 1);
+  if (!file.includes("{id}") || dir.includes("{id}")) return null;
+  if (!/\.pdf$/i.test(file)) return null;
+  const name = file.split("{id}").join(String(id).trim());
+  if (!name || name.includes("/")) return null;
+  return { dir, name, path: dir ? `${dir}/${name}` : name };
+}
+
+/* The contents path of any file or folder in the plan's repository. Each
+   segment is encoded on its own, so a slash stays a slash and anything else
+   in an id stays part of the name. */
+function contentsAt(path) {
+  const enc = path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+  return `/repos/${cfg.owner}/${cfg.repo}/contents${enc ? "/" + enc : ""}`
+    + `?ref=${encodeURIComponent(cfg.branch)}`;
+}
+
+async function listNotes() {
+  const forData = DATA;
+  const place = notesPlace(DATA.releaseNotes, "_");
+  if (!place) return;
+  let names;
+  try {
+    const res = await api(contentsAt(place.dir));
+    if (!res.ok) return;          // no folder yet: then nothing is clickable
+    const list = await res.json();
+    if (!Array.isArray(list)) return;              // the "folder" is a file
+    names = new Set(list.filter(f => f.type === "file").map(f => f.name));
+  } catch { return; }             // offline or refused: the rail is unchanged
+  if (DATA !== forData) return;
+  notesHave = names;
+  notesFor = forData;
+  renderShipped();
+}
+
+async function openNotes(rel, place) {
+  /* **The tab opens before the download, inside the click.** A window opened
+     after an `await` has lost the click that allowed it, and the pop-up
+     blocker takes it -- so it is opened empty now and pointed at the file
+     when the file arrives. */
+  const tab = window.open("", "_blank");
+  if (!tab) {
+    say("the browser blocked the new tab — allow pop-ups for this page to "
+      + "open release notes", true);
+    return;
+  }
+  try {
+    tab.opener = null;
+    tab.document.title = `${rel.id} release notes`;
+    tab.document.body.textContent = `Opening ${place.path}…`;
+  } catch { /* a blank tab it cannot write to still works */ }
+  say(`opening ${place.path}…`);
+  let res;
+  try {
+    /* The raw media type, because the JSON one stops at 1 MB and a PDF with
+       a screenshot in it is past that. Raw goes to 100 MB. */
+    res = await api(contentsAt(place.path),
+      { headers: { Accept: "application/vnd.github.raw+json" } });
+  } catch (e) {
+    tab.close();
+    say("cannot open the release notes — " + whyBlocked(e), true);
+    return;
+  }
+  if (!res.ok) {
+    tab.close();
+    say(`could not open ${place.path} — GitHub said ${res.status}.`
+      + await detail(res), true);
+    return;
+  }
+  const pdf = new Blob([await res.arrayBuffer()], { type: "application/pdf" });
+  /* Not revoked: the viewer may read it again to save or print, and it goes
+     when this page does. */
+  tab.location.href = URL.createObjectURL(pdf);
+  say(`opened the ${rel.id} release notes`);
 }
 
 /* The index rides on the element. It used to be derived by counting gaps,

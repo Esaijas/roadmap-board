@@ -225,8 +225,32 @@ const queue = () => ({ releases: [
         d.releases[1].id, "R8.1");
 }
 
+// ── where a shipped release's notes are ─────────────────────────────────────
+//
+// `notesPlace` decides which rows in the rail open something, and what. Lifted
+// like the rest. The cases that matter are the ones that must come back null:
+// a row is clickable only when this says where the file is.
+// eslint-disable-next-line no-eval
+const notesPlace = eval(`(${lift("notesPlace", "function notesPlace(pattern, id) {")})`);
+{
+  check("the plan's pattern names the file for an id",
+        notesPlace("docs/releases/{id}.pdf", "R1.05"),
+        { dir: "docs/releases", name: "R1.05.pdf", path: "docs/releases/R1.05.pdf" });
+  check("a plan without a pattern opens nothing",
+        notesPlace(undefined, "R1.05"), null);
+  check("{id} in the folder is refused, so one listing covers every release",
+        notesPlace("docs/{id}/notes.pdf", "R1.05"), null);
+  check("anything but a PDF is refused -- it would open as this page's origin",
+        notesPlace("docs/releases/{id}.html", "R1.05"), null);
+  check("a leading slash and the repository root both work",
+        notesPlace("/{id}.pdf", "R2"), { dir: "", name: "R2.pdf", path: "R2.pdf" });
+  check("an id with a slash in it cannot reach into another folder",
+        notesPlace("docs/releases/{id}.pdf", "R1/../secret"), null);
+}
+
 console.log(`${pass + problems.length} checks against the page's own functions`);
 problems.forEach(p => console.log("FAIL " + p));
 if (problems.length) process.exit(1);
 console.log("a shipped number and a bare number are both left alone");
 console.log("a locked release keeps its number, and nothing else takes it");
+console.log("release notes open only where the plan says, and only as a PDF");

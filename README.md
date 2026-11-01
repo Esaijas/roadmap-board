@@ -180,6 +180,7 @@ alone for the life of the project.
 ```jsonc
 {
   "title": "Pure Tracker",
+  "releaseNotes": "docs/releases/{id}.pdf",
   "releases": [
     { "id": "R1.4",
       "question": "Does a recording survive the phone trying to kill it?",
@@ -228,6 +229,15 @@ implementing can see it too. **It binds the board, not the file**: a run still
 has to write that release's document and mark it shipped, so this is a seatbelt
 against an accidental drag rather than a vault.
 
+`releaseNotes` says where a shipped release's notes are, as a path in the same
+repository with `{id}` where the release id goes. **A row in the shipped rail
+whose file is there opens it** in a new tab, read through the API with the same
+token as the plan, so it works for a private repository and for anybody who can
+use the board. Rows without a file stay as they were, and a plan without the
+field makes no extra request. `{id}` goes in the file name only — the folder is
+listed once per load to find out which rows have notes — and the file has to be
+a PDF.
+
 ## What it does
 
 - **Drag a card** between releases, or within one, to reorder
@@ -272,6 +282,8 @@ against an accidental drag rather than a vault.
   monitor want different answers, and so do two people on one board
 - **Keep shipped releases in a rail** down the side — hide it, reveal it,
   scroll it — so a long history does not eat the width
+- **Open a shipped release's notes** from the rail, when the plan says where
+  they are (`releaseNotes`, above)
 
 ## What it deliberately does not do
 

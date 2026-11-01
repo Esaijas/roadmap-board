@@ -29,7 +29,7 @@ outcome worse than no test.
 
 ## Bump the version in the same commit as the change
 
-⚙ Settings carries `const VERSION = "v32 · 2026-10-31"`, with a copy button.
+⚙ Settings carries `const VERSION = "v33 · 2026-11-01"`, with a copy button.
 **A stale deployment and a current one are indistinguishable from outside**:
 the URL works either way, the board draws either way, and the only answer is
 that string. There is no build step to bump it for you, which is the price of
