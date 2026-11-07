@@ -343,7 +343,7 @@ const planFault = eval("(function () {\n" + [
         ["Who it is for", "How to write", "A release (a column)", "A ticket (a card)"]);
   const items = blocks.filter(b => b.list).flatMap(b => b.list);
   check("a wrapped line stays part of its item, so none is lost or split",
-        [items.length, items.every(t => t.startsWith("**"))], [11, true]);
+        [items.length, items.every(t => t.startsWith("**"))], [13, true]);
 }
 
 // ── where a shipped release's notes are ─────────────────────────────────────

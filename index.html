@@ -911,7 +911,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v37 · 2026-11-07";
+const VERSION = "v38 · 2026-11-07";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
@@ -1372,13 +1372,13 @@ function say(text, bad) {
    the two used to get one text written for neither: paragraphs of how a
    problem was found, with the thing to do somewhere in the middle. So the
    guide is written for the first reader and keeps what the second needs, in
-   its own part of a ticket, under a line saying Build.
+   its own part of a ticket, under a heading saying Notes for building it.
 
    **It is one text and it is this one.** `README.md` carries it word for word
    between two markers, and the tests fail when the two differ -- a guide in
    two versions is a guide nobody can follow. The projects' own instructions
-   carry a short copy for the assistants that write there, and where they
-   differ, this is right.
+   carry it for the assistants that write there, and may add detail on top of
+   it, never contradict it.
 
    Plain text with three marks, so it reads the same here, in the README and
    in a terminal: `### ` a heading, `- ` a list item, `**…**` bold. A line that
@@ -1396,9 +1396,11 @@ Write for the first reader, and keep what the second one needs.
 - **Plain English.** Short sentences, one idea each. Say the point first.
 - **No back-story.** Leave out how a problem was found and what was tried
   before. That belongs in a release document or a commit message.
-- **The user's words.** Name screens, buttons and what happens, not code. If a
-  technical term is needed, explain it in the same sentence.
-- **No filler.** Cut "basically", "in order to", "it is worth noting".
+- **The user's words.** Name screens, buttons and what happens. Web addresses,
+  file paths, code names and database fields go in the notes, not the text.
+- **No padding.** Cut filler, and cut any sentence that only comments on the
+  sentences around it.
+- **Figures in a list.** Any run of numbers is a list or a table, never prose.
 - **Say the cost.** What is left out, what it costs and what could go wrong,
   when a decision depends on it.
 
@@ -1414,11 +1416,12 @@ Write for the first reader, and keep what the second one needs.
 
 - **Title:** what is asked for, in one sentence. A request that came in as
   somebody's own sentence keeps that sentence.
-- **Body, first:** for the product manager. What changes for the user and why,
-  in one to three sentences.
-- **Body, then:** a line that says "Build:", and under it what the team needs:
-  where in the code, what to change, how it is tested, and what makes it hard.
-  Short and concrete; a list is fine.
+- **First sentence:** what gets built. The reason comes after it.
+- **Then:** what it is for, what the user will see, and the awkward part: what
+  makes it hard or what it costs. One to three short sentences a paragraph.
+- **Last, "Notes for building it":** a heading of those words, then everything
+  the team needs: where in the code, what to change, how it is tested, the
+  figures and the traps. Precise and complete; nothing is cut down there.
 `;
 
 /* What an empty editor shows, from the same guide, so the shape is in front
@@ -1427,8 +1430,9 @@ const HINTS = {
   prose: "Why this release, in two to four plain sentences: what changes for "
     + "users, why now, and what is left out.",
   gate: "How we will know it works: what to do, and what you should see.",
-  body: "What changes for the user and why, in a sentence or two.\n\n"
-    + "Build:\n- where in the code, what to change, how it is tested",
+  body: "What gets built, in one sentence. Then what it is for, what the user "
+    + "will see, and the awkward part.\n\nNotes for building it\n"
+    + "- where in the code, what to change, how it is tested",
 };
 
 /* The guide as blocks: a heading, a paragraph, or a list. */

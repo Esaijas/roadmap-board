@@ -279,7 +279,7 @@ The rules, so a pattern does what it looks like it does:
 **The board carries its own writing guide** — the **Guide** button in the
 header, and the hint in an empty editor — so every project writes its releases
 and tickets the same way: plain English for a product manager, with what the
-team needs to build kept underneath. It is the text below, word for word; the
+team needs to build kept underneath, under a heading *Notes for building it*. It is the text below, word for word; the
 board's tests fail if the two drift apart. A project whose assistants write on
 the board should have its own instructions say so.
 
@@ -295,9 +295,11 @@ Write for the first reader, and keep what the second one needs.
 - **Plain English.** Short sentences, one idea each. Say the point first.
 - **No back-story.** Leave out how a problem was found and what was tried
   before. That belongs in a release document or a commit message.
-- **The user's words.** Name screens, buttons and what happens, not code. If a
-  technical term is needed, explain it in the same sentence.
-- **No filler.** Cut "basically", "in order to", "it is worth noting".
+- **The user's words.** Name screens, buttons and what happens. Web addresses,
+  file paths, code names and database fields go in the notes, not the text.
+- **No padding.** Cut filler, and cut any sentence that only comments on the
+  sentences around it.
+- **Figures in a list.** Any run of numbers is a list or a table, never prose.
 - **Say the cost.** What is left out, what it costs and what could go wrong,
   when a decision depends on it.
 
@@ -313,11 +315,12 @@ Write for the first reader, and keep what the second one needs.
 
 - **Title:** what is asked for, in one sentence. A request that came in as
   somebody's own sentence keeps that sentence.
-- **Body, first:** for the product manager. What changes for the user and why,
-  in one to three sentences.
-- **Body, then:** a line that says "Build:", and under it what the team needs:
-  where in the code, what to change, how it is tested, and what makes it hard.
-  Short and concrete; a list is fine.
+- **First sentence:** what gets built. The reason comes after it.
+- **Then:** what it is for, what the user will see, and the awkward part: what
+  makes it hard or what it costs. One to three short sentences a paragraph.
+- **Last, "Notes for building it":** a heading of those words, then everything
+  the team needs: where in the code, what to change, how it is tested, the
+  figures and the traps. Precise and complete; nothing is cut down there.
 <!-- /guide -->
 
 ## What it does

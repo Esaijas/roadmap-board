@@ -29,7 +29,7 @@ outcome worse than no test.
 
 ## Bump the version in the same commit as the change
 
-⚙ Settings carries `const VERSION = "v37 · 2026-11-07"`, with a copy button.
+⚙ Settings carries `const VERSION = "v38 · 2026-11-07"`, with a copy button.
 **A stale deployment and a current one are indistinguishable from outside**:
 the URL works either way, the board draws either way, and the only answer is
 that string. There is no build step to bump it for you, which is the price of
@@ -80,15 +80,18 @@ ticket with an emoji in its title was unstampable and nothing said so.
 ## The writing guide is one text, and the projects carry a copy
 
 `WRITING_GUIDE` in `index.html` says how a release and a ticket are written:
-plain English for a product manager, the point first and no back-story, with
-what the team needs kept underneath a *Build:* line. The board shows it behind
+plain English for a product manager, the point first, no back-story and no
+padding, with what the team needs kept underneath a heading *Notes for building
+it*. The board shows it behind
 the **Guide** button and as the hint in an empty editor. `README.md` carries
 the same text between two markers, and **the tests fail if the two differ**.
 
 The assistants that write on a board work in the projects' repositories and
-never read this one, so each project's `CLAUDE.md` carries a short copy of the
-rules. **This one is the authority**: change it here and carry the change to
-them, the same way the digest is carried.
+never read this one, so each project's `CLAUDE.md` carries the rules too.
+**This one is the shared baseline**: a project's own rules may add detail on
+top of it — one project's already do, with a fuller version of the same shape —
+but never contradict it. Change it here and carry the change to them, the same
+way the digest is carried.
 
 ## Nothing about any project belongs here
 
