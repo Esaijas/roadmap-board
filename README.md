@@ -274,6 +274,52 @@ The rules, so a pattern does what it looks like it does:
 - The folder is read on **the plan's own branch**, so notes on another branch
   appear once they are merged.
 
+## Writing on the board
+
+**The board carries its own writing guide** — the **Guide** button in the
+header, and the hint in an empty editor — so every project writes its releases
+and tickets the same way: plain English for a product manager, with what the
+team needs to build kept underneath. It is the text below, word for word; the
+board's tests fail if the two drift apart. A project whose assistants write on
+the board should have its own instructions say so.
+
+<!-- guide -->
+### Who it is for
+
+A product manager reads the board to understand what each release does for
+users and why. The software team reads the same words to know what to build.
+Write for the first reader, and keep what the second one needs.
+
+### How to write
+
+- **Plain English.** Short sentences, one idea each. Say the point first.
+- **No back-story.** Leave out how a problem was found and what was tried
+  before. That belongs in a release document or a commit message.
+- **The user's words.** Name screens, buttons and what happens, not code. If a
+  technical term is needed, explain it in the same sentence.
+- **No filler.** Cut "basically", "in order to", "it is worth noting".
+- **Say the cost.** What is left out, what it costs and what could go wrong,
+  when a decision depends on it.
+
+### A release (a column)
+
+- **Question:** one sentence a user might ask. The release answers it.
+- **Why:** two to four sentences. What changes for users, why now, and what is
+  left out.
+- **Gate:** how we will know it works. Checks a person can follow: what to do,
+  and what they should see.
+
+### A ticket (a card)
+
+- **Title:** what is asked for, in one sentence. A request that came in as
+  somebody's own sentence keeps that sentence.
+- **Body, first:** for the product manager. What changes for the user and why,
+  in one to three sentences.
+- **Body, then:** a line that says "Build:", and under it what the team needs:
+  where in the code, what to change, how it is tested, and what makes it hard.
+  Short and concrete; a list is fine.
+<!-- /guide -->
+
 ## What it does
 
 - **Drag a card** between releases, or within one, to reorder

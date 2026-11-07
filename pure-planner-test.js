@@ -324,6 +324,28 @@ const planFault = eval("(function () {\n" + [
         planFault([shipped("R8.5"), rel("R3.0"), rel("R3.1")]), null);
 }
 
+// ── the writing guide ───────────────────────────────────────────────────────
+//
+// One text, in two places: the board shows `WRITING_GUIDE`, and README.md
+// carries it between two markers. They are compared here rather than trusted
+// to stay alike, and the board's own reading of it is pinned.
+{
+  const m = /const WRITING_GUIDE = `\n([\s\S]*?)`;/.exec(src);
+  const readme = fs.readFileSync(path.join(__dirname, "README.md"), "utf8");
+  const r = /<!-- guide -->\n([\s\S]*?)\n<!-- \/guide -->/.exec(readme);
+  check("the README carries the board's writing guide word for word",
+        r && r[1].trim(), m && m[1].trim());
+  // eslint-disable-next-line no-eval
+  const guideBlocks = eval(`(${lift("guideBlocks", "function guideBlocks(text) {")})`);
+  const blocks = guideBlocks(m ? m[1] : "");
+  check("the guide reads as four headed sections",
+        blocks.filter(b => b.heading).map(b => b.heading),
+        ["Who it is for", "How to write", "A release (a column)", "A ticket (a card)"]);
+  const items = blocks.filter(b => b.list).flatMap(b => b.list);
+  check("a wrapped line stays part of its item, so none is lost or split",
+        [items.length, items.every(t => t.startsWith("**"))], [11, true]);
+}
+
 // ── where a shipped release's notes are ─────────────────────────────────────
 //
 // `notesPattern` and `notesFind` decide which rows in the rail open something,
@@ -379,3 +401,4 @@ console.log("a shipped number and a bare number are both left alone");
 console.log("a locked release keeps its number, and nothing else takes it");
 console.log("release notes open only where the plan says, and only as a PDF");
 console.log("nothing unbuilt is numbered at or below a shipped release");
+console.log("the writing guide is one text, in the board and in the README");

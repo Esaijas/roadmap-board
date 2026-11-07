@@ -29,7 +29,7 @@ outcome worse than no test.
 
 ## Bump the version in the same commit as the change
 
-⚙ Settings carries `const VERSION = "v36 · 2026-11-01"`, with a copy button.
+⚙ Settings carries `const VERSION = "v37 · 2026-11-07"`, with a copy button.
 **A stale deployment and a current one are indistinguishable from outside**:
 the URL works either way, the board draws either way, and the only answer is
 that string. There is no build step to bump it for you, which is the price of
@@ -76,6 +76,19 @@ The vectors exist because the two had already drifted, silently, for months:
 `charCodeAt` reads sixteen bits at a time, so a character outside the Basic
 Multilingual Plane is two iterations here and was one in the Python. Any
 ticket with an emoji in its title was unstampable and nothing said so.
+
+## The writing guide is one text, and the projects carry a copy
+
+`WRITING_GUIDE` in `index.html` says how a release and a ticket are written:
+plain English for a product manager, the point first and no back-story, with
+what the team needs kept underneath a *Build:* line. The board shows it behind
+the **Guide** button and as the hint in an empty editor. `README.md` carries
+the same text between two markers, and **the tests fail if the two differ**.
+
+The assistants that write on a board work in the projects' repositories and
+never read this one, so each project's `CLAUDE.md` carries a short copy of the
+rules. **This one is the authority**: change it here and carry the change to
+them, the same way the digest is carried.
 
 ## Nothing about any project belongs here
 

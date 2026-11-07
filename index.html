@@ -182,6 +182,14 @@ button.glyph .also { font-size: 13px; }
    it. The row wraps instead, which is the right thing to give way. */
 .sheetrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
 .sheetrow > button { flex: 0 0 auto; white-space: nowrap; }
+/* The writing guide: headings and short lists, at the size the rest of the
+   sheet text is, so it reads as part of the board rather than as a manual. */
+.guidebox h3 { font-size: 13px; margin: 4px 0 -4px; color: var(--ink); }
+.guidebox ul {
+  margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink2);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.guidebox strong { color: var(--ink); font-weight: 600; }
 
 /* **A field you cannot read back is a field you cannot check.** A pasted
    credential that is silently short looks exactly like a correct one, and the
@@ -751,6 +759,9 @@ textarea { font-size: 12.5px; }
   <span class="project" id="title"></span>
   <span class="status" id="status"></span>
   <span class="spacer"></span>
+  <button class="glyph" id="guideButton" title="How to write a release and a ticket">
+    <span aria-hidden="true">?</span><span class="also">Guide</span>
+  </button>
   <button class="glyph" id="refresh" title="Check the repository now">
     <span aria-hidden="true">&#8635;</span><span class="also">Refresh</span>
   </button>
@@ -789,6 +800,7 @@ textarea { font-size: 12.5px; }
 </div>
 
 <div id="ask" class="sheet" hidden><div class="sheetbox" id="askbox"></div></div>
+<div id="guide" class="sheet" hidden><div class="sheetbox guidebox" id="guidebox"></div></div>
 
 <div id="settings" class="sheet" hidden>
   <div class="sheetbox">
@@ -899,7 +911,7 @@ let remembers = true;
    reads it: that line runs in the settings section, further up the file, and a
    `const` below its first use is a temporal dead zone -- the second time this
    file has been broken by exactly that. */
-const VERSION = "v36 · 2026-11-01";
+const VERSION = "v37 · 2026-11-07";
 
 /* **Where v25 and earlier kept their one project.** It is still read -- once,
    to seed the list below -- so upgrading this file keeps a token that has
@@ -1353,6 +1365,137 @@ function say(text, bad) {
    that sandbox it, so it cannot depend on them.
 
    Resolves to a button's value, or null on Escape or a click outside. */
+/* ── how a release and a ticket are written ────────────────────────────── */
+
+/* **One writing guide, in the board, for every project.** The board is read
+   by somebody deciding what gets built and by the people who build it, and
+   the two used to get one text written for neither: paragraphs of how a
+   problem was found, with the thing to do somewhere in the middle. So the
+   guide is written for the first reader and keeps what the second needs, in
+   its own part of a ticket, under a line saying Build.
+
+   **It is one text and it is this one.** `README.md` carries it word for word
+   between two markers, and the tests fail when the two differ -- a guide in
+   two versions is a guide nobody can follow. The projects' own instructions
+   carry a short copy for the assistants that write there, and where they
+   differ, this is right.
+
+   Plain text with three marks, so it reads the same here, in the README and
+   in a terminal: `### ` a heading, `- ` a list item, `**…**` bold. A line that
+   wraps continues the block above it. Nothing else -- a guide that needed a
+   Markdown parser would be the first dependency this file has. */
+const WRITING_GUIDE = `
+### Who it is for
+
+A product manager reads the board to understand what each release does for
+users and why. The software team reads the same words to know what to build.
+Write for the first reader, and keep what the second one needs.
+
+### How to write
+
+- **Plain English.** Short sentences, one idea each. Say the point first.
+- **No back-story.** Leave out how a problem was found and what was tried
+  before. That belongs in a release document or a commit message.
+- **The user's words.** Name screens, buttons and what happens, not code. If a
+  technical term is needed, explain it in the same sentence.
+- **No filler.** Cut "basically", "in order to", "it is worth noting".
+- **Say the cost.** What is left out, what it costs and what could go wrong,
+  when a decision depends on it.
+
+### A release (a column)
+
+- **Question:** one sentence a user might ask. The release answers it.
+- **Why:** two to four sentences. What changes for users, why now, and what is
+  left out.
+- **Gate:** how we will know it works. Checks a person can follow: what to do,
+  and what they should see.
+
+### A ticket (a card)
+
+- **Title:** what is asked for, in one sentence. A request that came in as
+  somebody's own sentence keeps that sentence.
+- **Body, first:** for the product manager. What changes for the user and why,
+  in one to three sentences.
+- **Body, then:** a line that says "Build:", and under it what the team needs:
+  where in the code, what to change, how it is tested, and what makes it hard.
+  Short and concrete; a list is fine.
+`;
+
+/* What an empty editor shows, from the same guide, so the shape is in front
+   of whoever is writing at the moment they write -- not behind a button. */
+const HINTS = {
+  prose: "Why this release, in two to four plain sentences: what changes for "
+    + "users, why now, and what is left out.",
+  gate: "How we will know it works: what to do, and what you should see.",
+  body: "What changes for the user and why, in a sentence or two.\n\n"
+    + "Build:\n- where in the code, what to change, how it is tested",
+};
+
+/* The guide as blocks: a heading, a paragraph, or a list. */
+function guideBlocks(text) {
+  const out = [];
+  for (const chunk of text.trim().split(/\n\s*\n/)) {
+    const lines = chunk.split("\n");
+    if (lines[0].startsWith("### ")) {
+      out.push({ heading: lines.shift().slice(4).trim() });
+      if (!lines.length) continue;
+    }
+    if (lines[0].startsWith("- ")) {
+      const items = [];
+      lines.forEach(l => {
+        if (l.startsWith("- ")) items.push(l.slice(2).trim());
+        else items[items.length - 1] += " " + l.trim();
+      });
+      out.push({ list: items });
+    } else {
+      out.push({ para: lines.map(l => l.trim()).join(" ") });
+    }
+  }
+  return out;
+}
+
+/* Bold, and nothing else, built from text nodes -- never `innerHTML`. */
+function guideInline(node, text) {
+  text.split(/\*\*(.+?)\*\*/).forEach((part, i) => {
+    if (part) node.append(i % 2 ? el("strong", null, part) : part);
+  });
+  return node;
+}
+
+function openGuide() {
+  const sheet = document.getElementById("guide");
+  const box = document.getElementById("guidebox");
+  box.textContent = "";
+  box.appendChild(el("h2", null, "Writing guide"));
+  guideBlocks(WRITING_GUIDE).forEach(b => {
+    if (b.heading) box.appendChild(el("h3", null, b.heading));
+    if (b.para) box.appendChild(guideInline(el("p"), b.para));
+    if (b.list) {
+      const ul = el("ul");
+      b.list.forEach(t => ul.appendChild(guideInline(el("li"), t)));
+      box.appendChild(ul);
+    }
+  });
+  const row = el("div", "sheetrow");
+  row.appendChild(el("span", "spacer"));
+  const close = el("button", "primary", "Close");
+  row.appendChild(close);
+  box.appendChild(row);
+
+  const done = () => {
+    sheet.hidden = true;
+    document.removeEventListener("keydown", key, true);
+    sheet.onclick = null;
+  };
+  const key = e => { if (e.key === "Escape") { e.preventDefault(); done(); } };
+  close.onclick = done;
+  sheet.onclick = e => { if (e.target === sheet) done(); };
+  document.addEventListener("keydown", key, true);
+  sheet.hidden = false;
+  close.focus();
+}
+document.getElementById("guideButton").onclick = openGuide;
+
 function ask({ title, message, code, value, buttons }) {
   return new Promise(resolve => {
     const sheet = document.getElementById("ask");
@@ -2492,11 +2635,11 @@ function column(rel, ri) {
      clears on the way in. */
   head.appendChild(editable(
     el("div", "prose", rel.prose || "— why this release exists —"),
-    v => { rel.prose = v; }, undefined, freeze));
+    v => { rel.prose = v; }, undefined, freeze, HINTS.prose));
   head.appendChild(el("div", "eyebrow", "Gate"));
   head.appendChild(editable(
     el("div", "gate", rel.gate || "— not written yet —"),
-    v => { rel.gate = v; }, undefined, freeze));
+    v => { rel.gate = v; }, undefined, freeze, HINTS.gate));
 
   const long = (rel.prose || "").length > 150 || (rel.gate || "").length > 90;
   if (long) {
@@ -2677,7 +2820,7 @@ function card(rel, item, ri, ii) {
         v => { item.title = v; }, undefined, freeze));
     }
     body.appendChild(editable(el("div", "cbody", item.body || "— no note —"),
-      v => { item.body = v; }, undefined, freeze));
+      v => { item.body = v; }, undefined, freeze, HINTS.body));
   }
   d.appendChild(body);
 
@@ -2708,7 +2851,7 @@ function card(rel, item, ri, ii) {
    time. The nodes are rebuilt on every render, so a boolean would work today
    -- and would be wrong the first time one is kept, which is the kind of
    thing nobody remembers when keeping it. */
-function editable(node, commit, kind, frozen) {
+function editable(node, commit, kind, frozen, hint) {
   node.addEventListener("click", e => {
     if (node.querySelector("textarea, input")) return;
     e.stopPropagation();
@@ -2718,6 +2861,7 @@ function editable(node, commit, kind, frozen) {
     if (!multiline) f.className = "edit";
     const keep = node.textContent;
     f.value = keep.startsWith("— ") && keep.endsWith(" —") ? "" : keep;
+    if (hint && multiline) f.placeholder = hint;
     node.textContent = "";
     node.classList.add("editing");   // lifts the clamp; see the CSS note
     node.appendChild(f);
